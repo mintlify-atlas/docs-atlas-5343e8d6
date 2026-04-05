@@ -1,0 +1,281 @@
+---
+title: "Search API"
+description: "Full-text search across competitions, users, persons, regulations, posts, and incidents."
+---
+
+The WCA search API provides both an omnisearch endpoint (search across multiple entity types at once) and focused endpoints for searching individual entity types. All search endpoints accept a `q` query parameter and return a `{ result: [...] }` envelope.
+
+<Warning>
+  The API enforces a **60 requests per minute** rate limit per IP address. Search endpoints count toward this shared limit. Queries with no `q` parameter return a `400 Bad Request` error immediately and do not consume rate limit budget.
+</Warning>
+
+Search queries are truncated at the internal `SEARCH_QUERY_LIMIT` before processing. Results are cached server-side (keyed by query string and the latest auxiliary data date), with a cache invalidation override for Results Team members.
+
+---
+
+## Omnisearch
+
+Searches across competitions, users, WCA regulations, and incidents simultaneously. Posts are excluded from omnisearch results because they are not useful in autocomplete contexts.
+
+```
+GET /api/v0/search
+```
+
+<ParamField query="q" type="string" required>
+  The search query string. Must be non-empty. Whitespace-separated tokens are each matched independently.
+</ParamField>
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/search?q=World+Championship"
+```
+
+### Response
+
+```json
+{
+  "result": [
+    {
+      "class": "competition",
+      "id": "WorldRubiksCubeChampionship2025",
+      "name": "World Rubik's Cube Championship 2025",
+      "url": "https://www.worldcubeassociation.org/competitions/WorldRubiksCubeChampionship2025",
+      "country_iso2": "PL",
+      "city": "Warsaw",
+      "start_date": "2025-07-18",
+      "end_date": "2025-07-21"
+    },
+    {
+      "class": "user",
+      "id": 267,
+      "name": "Tim Reynolds",
+      "wca_id": "2005REYN01",
+      "url": "https://www.worldcubeassociation.org/persons/2005REYN01"
+    }
+  ]
+}
+```
+
+<ResponseField name="result" type="array" required>
+  Array of matching entities, up to 20 per entity type (up to 80 total for omnisearch which covers 4 types). Results are ordered by relevance within each type; types are interleaved in the array.
+
+  Each result object includes a `class` field identifying the entity type. Omnisearch returns only the first four types below; the others are available via their dedicated endpoints:
+
+  | `class` | Entity type | In omnisearch? |
+  |---------|-------------|----------------|
+  | `competition` | WCA competition | Yes |
+  | `user` | WCA user account | Yes |
+  | `regulation` | WCA regulation or guideline | Yes |
+  | `incident` | WCA incident log entry | Yes |
+  | `person` | WCA competitor (results DB) | No — use `/search/persons` |
+  | `post` | WCA website news post | No — use `/search/posts` |
+</ResponseField>
+
+---
+
+## Competitions search
+
+```
+GET /api/v0/search/competitions
+```
+
+Searches competition names and IDs.
+
+<ParamField query="q" type="string" required>
+  Search query. Matched against competition name and competition ID.
+</ParamField>
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/search/competitions?q=Open+2025"
+```
+
+### Response
+
+```json
+{
+  "result": [
+    {
+      "class": "competition",
+      "id": "HangzhouOpen2025",
+      "name": "Hangzhou Open 2025",
+      "url": "https://www.worldcubeassociation.org/competitions/HangzhouOpen2025",
+      "country_iso2": "CN",
+      "city": "Hangzhou, Zhejiang",
+      "start_date": "2025-04-12",
+      "end_date": "2025-04-13",
+      "registration_open": "2025-02-01T00:00:00.000Z",
+      "registration_close": "2025-03-28T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## Users search
+
+```
+GET /api/v0/search/users
+```
+
+Searches registered WCA accounts by name and WCA ID. Only returns accounts with confirmed emails. When the requester has Results Team admin access, results also include `incorrect_wca_id_claim_count` and `dob`.
+
+<ParamField query="q" type="string" required>
+  Search query. Matched against user name and WCA ID.
+</ParamField>
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/search/users?q=Zemdegs"
+```
+
+### Response
+
+```json
+{
+  "result": [
+    {
+      "class": "user",
+      "id": 4567,
+      "name": "Feliks Zemdegs",
+      "wca_id": "2009ZEMD01",
+      "url": "https://www.worldcubeassociation.org/persons/2009ZEMD01",
+      "country_iso2": "AU",
+      "delegate_status": null,
+      "avatar": {
+        "url": "https://avatars.worldcubeassociation.org/...",
+        "thumb_url": "https://avatars.worldcubeassociation.org/..."
+      }
+    }
+  ]
+}
+```
+
+<Note>
+  The users search returns WCA accounts, not persons. A user may not have a WCA ID (they've registered but never competed). If you want to search across all competitors regardless of account status, use the [persons search](#persons-search) instead.
+</Note>
+
+---
+
+## Persons search
+
+```
+GET /api/v0/search/persons
+```
+
+Searches the competitor (persons) database by name and WCA ID. Returns results for all competitors who have ever competed, even those without a WCA website account.
+
+<ParamField query="q" type="string" required>
+  Search query. Each whitespace-separated token is matched against both name and WCA ID.
+</ParamField>
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/search/persons?q=2019WANG36"
+```
+
+### Response
+
+```json
+{
+  "result": [
+    {
+      "class": "person",
+      "id": "2019WANG36",
+      "wca_id": "2019WANG36",
+      "name": "Yiheng Wang (王艺衡)",
+      "url": "https://www.worldcubeassociation.org/persons/2019WANG36",
+      "country_iso2": "CN"
+    }
+  ]
+}
+```
+
+This endpoint is backed by `Person.search`, which filters on `sub_id = 1` (the current record for each competitor) and matches each query token independently against `name` and `wca_id` using a `LIKE` clause.
+
+---
+
+## Posts search
+
+```
+GET /api/v0/search/posts
+```
+
+Searches WCA news posts and announcements. Only published posts are returned.
+
+<ParamField query="q" type="string" required>
+  Search query. Matched against post title and body content.
+</ParamField>
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/search/posts?q=regulation+changes"
+```
+
+### Response
+
+```json
+{
+  "result": [
+    {
+      "class": "post",
+      "id": 123,
+      "title": "2024 Regulation Changes",
+      "url": "https://www.worldcubeassociation.org/posts/123",
+      "created_at": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+<Note>
+  Posts are intentionally excluded from omnisearch (`GET /api/v0/search`) because they are less useful in autocomplete and navigation contexts. Use this dedicated endpoint when you specifically want to search posts.
+</Note>
+
+---
+
+## Regulations search
+
+```
+GET /api/v0/search/regulations
+```
+
+Searches the WCA Regulations and Guidelines by article number and text content.
+
+<ParamField query="q" type="string" required>
+  Search query. Use regulation codes (e.g. `10f`) or keywords.
+</ParamField>
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/search/regulations?q=scramble+orientation"
+```
+
+### Response
+
+```json
+{
+  "result": [
+    {
+      "class": "regulation",
+      "id": "4b",
+      "url": "https://www.worldcubeassociation.org/regulations/#4b",
+      "content_html": "The WCA Delegate must ensure that...",
+      "content_markdown": "The WCA Delegate must ensure that..."
+    }
+  ]
+}
+```
+
+---
+
+## Result limits and caching
+
+Each focused endpoint returns at most **20 results**. The omnisearch endpoint fetches up to 20 results per entity type it covers (competitions, users, regulations, incidents), for a theoretical maximum of 80 entries in the combined `result` array.
+
+All search results are cached server-side using the query string and the last `ComputeAuxiliaryData` date as cache keys. The cache is bypassed for members of the WCA Results Team to ensure they always see the most current data (particularly relevant for WCA ID claim investigations).
+
+---
+
+## Error handling
+
+| Status | Meaning |
+|--------|---------|
+| `200` | Query executed successfully. `result` may be an empty array if nothing matches. |
+| `400` | Missing `q` parameter. Response: `{ "error": "No query specified" }` |
+| `429` | Rate limit exceeded (60 req/min for external IPs). |

@@ -1,0 +1,282 @@
+---
+title: "Local Development Quickstart"
+description: "Get the WCA website running on your machine using Docker Compose in under 30 minutes."
+---
+
+The WCA website is a Rails monolith with a Next.js frontend, backed by MySQL, Redis, and MongoDB. Docker Compose orchestrates all services locally so you don't need to install Ruby, Node.js, or any databases directly on your host.
+
+## Prerequisites
+
+Before you begin, make sure you have the following installed:
+
+| Tool | Required Version | Notes |
+|---|---|---|
+| **Git** | Any recent version | For cloning the repo |
+| **Docker** | 24+ | With the Compose plugin (`docker compose`) |
+| **Docker Compose** | v2+ | Bundled with Docker Desktop |
+
+<Note>
+The dev Docker image is built on `ruby:3.4.6` and installs Node.js 24 automatically. You do **not** need Ruby or Node.js installed on your host machine — Docker handles the entire runtime environment.
+</Note>
+
+## Setup
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/thewca/worldcubeassociation.org.git
+    cd worldcubeassociation.org
+    ```
+  </Step>
+
+  <Step title="Review environment variables">
+    The repo ships a `.env.development` file with sane defaults for local development — including test API keys for Stripe, PayPal, and reCAPTCHA. No manual edits are needed to get the site running.
+
+    Key variables and what they do:
+
+    ```bash
+    # Set to false — prevents accidental live-site behavior
+    WCA_LIVE_SITE=false
+
+    # Stripe test keys (safe for local use, not real charges)
+    STRIPE_API_KEY=sk_test_CY2eQJchZKUrPGQtJ3Z60ycA
+    STRIPE_PUBLISHABLE_KEY=pk_test_N0KdZIOedIrP8C4bD5XLUxOY
+
+    # PayPal sandbox credentials
+    PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
+    PAYPAL_CLIENT_ID=AVOWeybtlJY6DJCDIu6LO64bVrzlsO9DiVFEFTnzraC3S5p4pJefSapwLUaRiroRinTEN8Wi9Phlg6On
+
+    # reCAPTCHA test keys (always pass validation locally)
+    RECAPTCHA_PUBLIC_KEY=6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI
+
+    # Local avatar storage (no S3 needed in dev)
+    AVATARS_PUBLIC_STORAGE=local
+    AVATARS_PRIVATE_STORAGE=local_private
+
+    # Outgoing emails captured by Mailcatcher (see step 5)
+    MAILCATCHER_SMTP_HOST=localhost
+    ```
+
+    <Warning>
+      Never commit real credentials to `.env.development`. The values shipped in the repository are intentionally test/sandbox keys with no real-world impact.
+    </Warning>
+  </Step>
+
+  <Step title="Build and initialize the environment">
+    The `wca_environment` service runs `bin/setup` which installs gems, yarn packages, and seeds the database. This only needs to complete once (it creates a `.db-inited` sentinel file).
+
+    ```bash
+    docker compose up wca_environment
+    ```
+
+    This step can take **10–15 minutes** on the first run as it:
+    - Builds the Docker image from `Dockerfile.dev`
+    - Installs all Ruby gems via Bundler
+    - Installs JavaScript packages via Yarn
+    - Runs `bin/rails db:prepare` (creates and migrates the MySQL database)
+    - Seeds the database with WCA events, round formats, and sample data
+
+    <Tip>
+      After the first run, the `gems_volume` and `node_modules_volume` Docker volumes cache installed packages. Subsequent starts are much faster.
+    </Tip>
+  </Step>
+
+  <Step title="Start all services">
+    With the database initialized, bring up the full stack:
+
+    ```bash
+    docker compose up wca_on_rails wca_webpacker wca_nextjs wca_sidekiq wca_mailcatcher
+    ```
+
+    Or start everything at once (including Redis, MySQL, and AnyCable):
+
+    ```bash
+    docker compose up
+    ```
+
+    Services and their ports:
+
+    | Service | URL | Description |
+    |---|---|---|
+    | `wca_on_rails` | http://localhost:3000 | Rails backend + legacy frontend |
+    | `wca_nextjs` | http://localhost:3001 | Next.js frontend |
+    | `wca_webpacker` | http://localhost:3035 | Shakapacker dev server (HMR) |
+    | `wca_mailcatcher` | http://localhost:1080 | Email web UI (catches all outgoing mail) |
+    | `wca_db` | localhost:3306 | MySQL 8.4 |
+    | `wca_redis` | localhost:6379 | Redis (cache, Sidekiq, AnyCable) |
+    | `wca_ws` | localhost:8085 | AnyCable WebSocket server |
+    | `wca_payload_db` | localhost:27017 | MongoDB (Payload CMS for Next.js) |
+  </Step>
+
+  <Step title="Verify the site is running">
+    Open http://localhost:3000 — you should see the WCA homepage served by Rails.
+
+    Open http://localhost:3001 — you should see the Next.js frontend (competitions list, person profiles, results, etc.).
+
+    To verify the Rails API is healthy:
+
+    ```bash
+    curl http://localhost:3000/api/v0/healthcheck
+    # {"status":"ok","api_instance":false}
+    ```
+  </Step>
+</Steps>
+
+## Running Tests
+
+<Tabs>
+  <Tab title="RSpec (Rails)">
+    Run the full RSpec suite inside the `wca_on_rails` container:
+
+    ```bash
+    docker compose exec wca_on_rails bundle exec rspec
+    ```
+
+    Run a specific spec file:
+
+    ```bash
+    docker compose exec wca_on_rails bundle exec rspec spec/models/competition_spec.rb
+    ```
+
+    The test suite uses:
+    - **RSpec** for unit and request specs
+    - **FactoryBot** for test data
+    - **DatabaseCleaner** for isolation between tests
+    - **Capybara + Playwright** for browser/integration tests
+    - **Timecop** for time-dependent behavior
+    - **WebMock** for stubbing HTTP calls
+  </Tab>
+  <Tab title="Playwright (E2E)">
+    End-to-end tests use Playwright and require both the Rails and Next.js servers to be running.
+
+    Start the Playwright server:
+
+    ```bash
+    docker compose up wca_playwright
+    ```
+
+    Run the test suite from within the container:
+
+    ```bash
+    docker compose exec wca_playwright yarn playwright test
+    ```
+
+    Or from your host if you have Node.js installed locally:
+
+    ```bash
+    yarn playwright test
+    ```
+
+    The Playwright config (`playwright.config.ts`) points to `http://wca_on_rails:3000` for the backend health check and `http://nextjs:3001` for the frontend.
+  </Tab>
+  <Tab title="Next.js (Vitest)">
+    Unit tests for the Next.js frontend use **Vitest**:
+
+    ```bash
+    docker compose exec wca_nextjs yarn test
+    ```
+
+    For an interactive UI:
+
+    ```bash
+    docker compose exec wca_nextjs yarn test:ui
+    ```
+
+    Type-check the TypeScript codebase:
+
+    ```bash
+    docker compose exec wca_nextjs yarn check:types
+    ```
+  </Tab>
+  <Tab title="Linting">
+    Run ESLint on the Rails webpacker components:
+
+    ```bash
+    docker compose exec wca_on_rails yarn lint
+    ```
+
+    Run ESLint on the Next.js frontend:
+
+    ```bash
+    docker compose exec wca_nextjs yarn lint
+    ```
+
+    Run RuboCop on the Ruby codebase:
+
+    ```bash
+    docker compose exec wca_on_rails bundle exec rubocop
+    ```
+  </Tab>
+</Tabs>
+
+## Common Development Tasks
+
+<AccordionGroup>
+  <Accordion title="Run a Rails console">
+    ```bash
+    docker compose exec wca_on_rails bin/rails console
+    ```
+  </Accordion>
+  <Accordion title="Run database migrations">
+    ```bash
+    docker compose exec wca_on_rails bin/rails db:migrate
+    ```
+  </Accordion>
+  <Accordion title="Reset and reseed the database">
+    ```bash
+    docker compose exec wca_on_rails bin/rails db:reset
+    ```
+
+    This drops, recreates, migrates, and re-seeds the database. Useful when your local DB gets into a bad state.
+  </Accordion>
+  <Accordion title="View application logs">
+    ```bash
+    # All services
+    docker compose logs -f
+
+    # Rails only
+    docker compose logs -f wca_on_rails
+
+    # Sidekiq only
+    docker compose logs -f wca_sidekiq
+    ```
+  </Accordion>
+  <Accordion title="Connect to MySQL directly">
+    ```bash
+    docker compose exec wca_db mysql -u root wca_development
+    ```
+  </Accordion>
+  <Accordion title="Regenerate OpenAPI TypeScript types (Next.js)">
+    The Next.js frontend generates TypeScript types from the WCA OpenAPI spec:
+
+    ```bash
+    docker compose exec wca_nextjs yarn types:openapi
+    ```
+
+    This bundles `openapi/wcaCore.yaml`, outputs a merged `openapi/wcaAPI.yaml`, and generates `src/types/openapi.ts`.
+  </Accordion>
+  <Accordion title="Enable background cronjobs in development">
+    By default, `CRONJOB_POLLING_SECONDS=0` disables cronjobs. To enable them, set a polling interval in your local environment and restart Sidekiq:
+
+    ```bash
+    # In docker-compose.yml, under wca_sidekiq environment:
+    CRONJOB_POLLING_SECONDS: 30
+    ```
+
+    Then restart: `docker compose restart wca_sidekiq`
+  </Accordion>
+</AccordionGroup>
+
+## Stopping the Stack
+
+```bash
+# Stop all running containers (preserves volumes)
+docker compose down
+
+# Stop and remove all volumes (full clean slate)
+docker compose down -v
+```
+
+<Warning>
+  Running `docker compose down -v` deletes the database volume. You will need to re-run the environment setup step to reinitialize the database.
+</Warning>

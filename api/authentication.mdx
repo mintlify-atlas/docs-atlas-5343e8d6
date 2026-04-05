@@ -1,0 +1,234 @@
+---
+title: "API Authentication"
+description: "How to authenticate with the WCA API using OAuth 2.0 — scopes, tokens, and making authenticated requests."
+---
+
+Most WCA API v0 read endpoints are fully public and require no credentials. A subset of endpoints — those that return private user data or allow writing — require an OAuth 2.0 access token issued by the WCA authorization server.
+
+## Public Endpoints
+
+You can call public endpoints without any token:
+
+```bash
+# No token required
+curl https://www.worldcubeassociation.org/api/v0/competitions/WC2025
+curl https://www.worldcubeassociation.org/api/v0/persons/2003POCH01
+curl https://www.worldcubeassociation.org/api/v0/records
+```
+
+## Authenticated Endpoints
+
+Endpoints that expose private user data or perform writes require a valid Bearer token. Examples:
+
+| Endpoint | Why auth is needed |
+|----------|--------------------|
+| `GET /api/v0/me` | Returns the OAuth token owner's user object |
+| `GET /api/v0/users/me` | Returns full profile including email |
+| `GET /api/v0/users/me/permissions` | Returns privileged role data |
+| `GET /api/v0/competitions/mine` | Returns competitions tied to the user |
+| `PATCH /api/v0/competitions/:id/wcif` | Writes competition data |
+| All `/api/v1/` endpoints | v1 always requires authentication |
+
+Pass the token in the `Authorization` header on every request:
+
+```bash
+curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  https://www.worldcubeassociation.org/api/v0/me
+```
+
+---
+
+## OAuth 2.0 Setup
+
+The WCA uses [Doorkeeper](https://github.com/doorkeeper-gem/doorkeeper) to implement OAuth 2.0. The supported grant flows are:
+
+- **Authorization Code** — standard server-side web app flow (recommended)
+- **Implicit** — for SPAs (use Authorization Code + PKCE when possible)
+- **Resource Owner Password Credentials** — direct username/password exchange (used for tooling)
+- **Client Credentials** — server-to-server without a user context
+
+<Steps>
+  <Step title="Register an OAuth Application">
+    Go to [worldcubeassociation.org/oauth/applications](https://www.worldcubeassociation.org/oauth/applications) and sign in with your WCA account. Click **New Application** and fill in:
+
+    - **Name**: a human-readable label for your app
+    - **Redirect URI**: the callback URL where the WCA will send the authorization code after the user approves your app. Use `urn:ietf:wg:oauth:2.0:oob` for desktop / out-of-band flows.
+    - **Scopes**: select the scopes your application needs (see the full list below)
+
+    After saving, you'll receive a **Client ID** and **Client Secret**. Store the secret securely — it is not shown again.
+  </Step>
+
+  <Step title="Redirect the User to the Authorization Endpoint">
+    Build the authorization URL and redirect the user:
+
+    ```
+    https://www.worldcubeassociation.org/oauth/authorize
+      ?client_id=YOUR_CLIENT_ID
+      &redirect_uri=YOUR_REDIRECT_URI
+      &response_type=code
+      &scope=public+email
+    ```
+
+    The user will be asked to log in (if not already) and approve the requested scopes.
+  </Step>
+
+  <Step title="Exchange the Code for an Access Token">
+    After the user approves, the WCA redirects to your `redirect_uri` with a `code` query parameter. Exchange it for a token:
+
+    ```bash
+    curl https://www.worldcubeassociation.org/oauth/token \
+      -X POST \
+      -F grant_type=authorization_code \
+      -F client_id=YOUR_CLIENT_ID \
+      -F client_secret=YOUR_CLIENT_SECRET \
+      -F code=AUTHORIZATION_CODE \
+      -F redirect_uri=YOUR_REDIRECT_URI
+    ```
+
+    Successful response:
+
+    ```json
+    {
+      "access_token": "1d6c95446cab947224286b7bec4382d898c664c7a3cafb16d3d110a3044cf4dc",
+      "token_type": "bearer",
+      "expires_in": 7200,
+      "refresh_token": "8f2a3b...",
+      "created_at": 1430788134
+    }
+    ```
+  </Step>
+
+  <Step title="Make Authenticated API Requests">
+    Include the access token as a Bearer token in the `Authorization` header:
+
+    ```bash
+    curl -H "Authorization: Bearer 1d6c95446cab947224286b7bec4382d898c664c7a3cafb16d3d110a3044cf4dc" \
+      https://www.worldcubeassociation.org/api/v0/me
+    ```
+
+    ```json
+    {
+      "me": {
+        "id": 42,
+        "email": "you@example.com",
+        "created_at": "2018-03-10T12:00:00.000Z",
+        "updated_at": "2024-11-01T09:30:00.000Z"
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+---
+
+## OAuth Scopes
+
+Scopes determine what data your application can access on behalf of the user. Request only the scopes your application genuinely needs.
+
+| Scope | Default | Description |
+|-------|---------|-------------|
+| `public` | Yes (default) | Read access to all public WCA data — competitions, persons, results, rankings. Granted automatically to every token. |
+| `email` | No | Access the user's email address. Returned by `/api/v0/users/me` when this scope is present. |
+| `dob` | No | Access the user's date of birth. |
+| `profile` | No | Access extended profile information (used with OpenID Connect). |
+| `manage_competitions` | No | Create and update competitions, update WCIF data, and access competition management endpoints. |
+| `openid` | No | OpenID Connect identity token. Enables the `/oauth/userinfo` endpoint. |
+| `cms` | No | Access to CMS/content management features. |
+
+<Note>
+  The `public` scope is the default and is automatically included in every token. You do not need to list it explicitly.
+</Note>
+
+Request multiple scopes by separating them with spaces (URL-encoded as `+`):
+
+```
+scope=public+email+manage_competitions
+```
+
+---
+
+## Token Expiry and Refresh
+
+Access tokens expire after **2 hours** (7200 seconds) by default, as configured in the Doorkeeper initializer. Refresh tokens are enabled, so you can obtain a new access token without sending the user through the authorization flow again:
+
+```bash
+curl https://www.worldcubeassociation.org/oauth/token \
+  -X POST \
+  -F grant_type=refresh_token \
+  -F client_id=YOUR_CLIENT_ID \
+  -F client_secret=YOUR_CLIENT_SECRET \
+  -F refresh_token=YOUR_REFRESH_TOKEN
+```
+
+The response has the same shape as the original token response and includes a new `access_token` and `refresh_token`.
+
+<Warning>
+  Refresh tokens are single-use. Each refresh call invalidates the previous refresh token and issues a new one. Store the new refresh token returned with each access token exchange.
+</Warning>
+
+---
+
+## Verifying Your Token with `/api/v0/me`
+
+The `/api/v0/me` endpoint is the simplest way to verify that a token is valid and inspect who it belongs to. It returns the resource owner's user object, filtered to only include attributes permitted by the token's scopes.
+
+```bash
+curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  https://www.worldcubeassociation.org/api/v0/me
+```
+
+```json
+{
+  "me": {
+    "id": 42,
+    "name": "Jane Doe",
+    "wca_id": "2018DOEJ01",
+    "email": "jane@example.com",
+    "country_iso2": "US",
+    "created_at": "2018-03-10T12:00:00.000Z",
+    "updated_at": "2024-11-01T09:30:00.000Z"
+  }
+}
+```
+
+The `email` field is only returned when the token includes the `email` scope.
+
+---
+
+## Resource Owner Password Credentials Flow
+
+For command-line tools and scripts where redirecting a browser is impractical, you can exchange a username and password directly for a token:
+
+```bash
+curl https://www.worldcubeassociation.org/oauth/token \
+  -X POST \
+  -F grant_type=password \
+  -F client_id=YOUR_CLIENT_ID \
+  -F client_secret=YOUR_CLIENT_SECRET \
+  -F username=your@email.com \
+  -F password=yourpassword
+```
+
+<Warning>
+  The password grant flow sends user credentials directly to your application. Only use this in trusted, private tooling — never in a public-facing application.
+</Warning>
+
+---
+
+## Authentication Error Responses
+
+| Status | Body | Cause |
+|--------|------|-------|
+| `401 Unauthorized` | `{"error": "Please log in"}` | No `Authorization` header, or token is expired / revoked |
+| `403 Forbidden` | `{"error": "Cannot adminster results"}` | Token is valid but the user lacks the required permission or role |
+| `403 Forbidden` | scope error from Doorkeeper | Token is valid but missing a required scope (e.g. `manage_competitions`) |
+
+<Accordion title="How scopes are enforced in the source">
+  In `api_controller.rb`, endpoints that require authentication call `doorkeeper_authorize!`. Scope-restricted endpoints (such as competition management) call `require_scope!("manage_competitions")` inside the controller action. Any request with a valid token but the wrong scope receives a `403` from Doorkeeper before the controller action runs.
+</Accordion>
+
+---
+
+## SSL and Redirect URI Requirements
+
+The WCA OAuth server enforces HTTPS for all redirect URIs in production, except for `localhost` (which is intentionally allowed for local development and TNoodle integration). Non-localhost redirect URIs that use plain HTTP will be rejected.

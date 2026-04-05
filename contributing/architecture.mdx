@@ -1,0 +1,343 @@
+---
+title: "Platform Architecture"
+description: "A technical overview of the WCA website: Rails backend, Next.js frontend, background jobs, database, and infrastructure."
+---
+
+The WCA website is a single monorepo that hosts all of `worldcubeassociation.org`. The core is a **Ruby on Rails** application (`WcaOnRails`) that serves the API, handles authentication, manages competition data, and runs background jobs. A **Next.js 16** frontend (`next-frontend/`) is progressively replacing the legacy Rails views for public-facing pages.
+
+## High-Level Overview
+
+```
+worldcubeassociation.org/
+├── app/                  # Rails application (MVC + jobs + mailers)
+├── next-frontend/        # Next.js 16 frontend (App Router)
+├── config/               # Rails config (routes, initializers, environments)
+├── db/                   # MySQL schema and migrations
+├── infra/                # Terraform for AWS infrastructure
+├── lib/                  # Shared Ruby utilities and static data
+└── spec/                 # RSpec test suite
+```
+
+<CardGroup cols={2}>
+  <Card title="Rails Backend" icon="gem" href="#rails-backend">
+    Ruby on Rails serving the REST API (v0/v1), OAuth via Doorkeeper, background jobs with Sidekiq, and legacy HTML views.
+  </Card>
+  <Card title="Next.js Frontend" icon="react" href="#nextjs-frontend">
+    Next.js 16 with the App Router, Chakra UI, Payload CMS, and TypeScript. Handles public competition pages, person profiles, and results.
+  </Card>
+  <Card title="Background Jobs" icon="clock" href="#background-jobs">
+    Sidekiq (development/staging) and Shoryuken/SQS (production) for async tasks: result exports, email notifications, and database syncs.
+  </Card>
+  <Card title="Infrastructure" icon="aws" href="#infrastructure">
+    AWS ECS (Fargate), RDS (MySQL), ElastiCache (Redis), S3, CloudFront, and Terraform for infrastructure-as-code.
+  </Card>
+</CardGroup>
+
+## Rails Backend
+
+The Rails application lives in `app/` and is the authoritative data layer for all WCA competition data, users, results, and registrations.
+
+### Controllers
+
+Controllers are organized by domain. The key namespaces are:
+
+```
+app/controllers/
+├── api/
+│   ├── v0/          # Public REST API (read-heavy, rate-limited to 60 req/min in production)
+│   └── v1/          # Newer API endpoints
+├── admin/           # Admin-only management interfaces
+├── oauth/           # OAuth authorization server endpoints (Doorkeeper)
+├── competitions_controller.rb
+├── registrations_controller.rb
+├── results_controller.rb
+├── users_controller.rb
+├── persons_controller.rb
+├── live_controller.rb      # WCA Live results (real-time)
+└── ...
+```
+
+The `Api::V0::ApiController` base class applies rate limiting (60 requests/minute per external IP), enforces CORS, and uses Doorkeeper token authentication for protected endpoints.
+
+<Note>
+  The v0 API is the primary integration surface for third-party tools and the Next.js frontend. It uses `doorkeeper-openid_connect` for OAuth 2.0 / OIDC support.
+</Note>
+
+### Models
+
+The data model covers the full lifecycle of WCA competitions and results:
+
+```
+app/models/
+├── competition.rb          # Competition details, venue, organizers, events
+├── registration.rb         # Competitor registrations per competition
+├── result.rb               # Official WCA results
+├── person.rb               # WCA ID holder (profile, nationality, records)
+├── user.rb                 # Account (Devise auth, roles, avatar, 2FA)
+├── user_role.rb            # Role assignments (delegate, board, WFC, etc.)
+├── live_result.rb          # Real-time results for WCA Live
+├── scramble.rb             # Official scrambles
+├── payment_intent.rb       # Payment records (Stripe + PayPal)
+├── ticket.rb               # Support ticket system
+├── incident.rb             # Regulation incident reports
+└── ...                     # ~110 additional models
+```
+
+Key relationships:
+- A `Competition` has many `Round`s, `Registration`s, `CompetitionEvent`s, and `Scramble`s.
+- A `User` may have a `Person` (WCA ID), and holds `UserRole`s that grant committee/delegate access.
+- `Result` records are immutable after publication and linked to `Person`, `Event`, `Round`, and `Competition`.
+
+### Mailers
+
+All transactional email is handled by ActionMailer with Sidekiq delivering asynchronously (`deliver_later`). Mail is routed through a dedicated `:mailers` queue.
+
+```
+app/mailers/
+├── competitions_mailer.rb       # Competition announcements, results submission reminders
+├── registrations_mailer.rb      # Registration confirmations and waitlist notifications
+├── new_registration_mailer.rb   # Organizer notifications for new registrations
+├── role_change_mailer.rb        # Delegate role changes
+├── wca_id_claim_mailer.rb       # WCA ID claiming workflow
+├── two_factor_mailer.rb         # 2FA setup and OTP emails
+├── devise_mailer.rb             # Password reset, email confirmation
+├── sanity_check_mailer.rb       # Automated data quality alerts
+├── tickets_mailer.rb            # Support ticket notifications
+└── wca_monthly_digest_mailer.rb # Monthly report for delegates
+```
+
+In development, all outgoing emails are intercepted by **Mailcatcher** at http://localhost:1080 — nothing reaches real inboxes.
+
+### Webpacker (Legacy React Components)
+
+The Rails app includes a `app/webpacker/` directory with React components bundled by Shakapacker (Webpack). These components are embedded in Rails ERB views using `react-rails`.
+
+```
+app/webpacker/
+├── components/    # React components (competition schedule, registration form, etc.)
+├── lib/           # Shared JS utilities
+├── packs/         # Webpack entry points
+└── stylesheets/   # SCSS for Rails views
+```
+
+<Tip>
+  New UI work should target the Next.js frontend rather than adding new Webpacker components. The Webpacker layer is being incrementally migrated.
+</Tip>
+
+## Next.js Frontend
+
+The `next-frontend/` directory is a standalone Next.js 16 application using the App Router. It runs on port 3001 and communicates with the Rails backend via its v0 API.
+
+### Technology Stack
+
+| Tool | Version | Purpose |
+|---|---|---|
+| Next.js | 16.2.1 | Framework (App Router, RSC) |
+| React | 19 | UI library |
+| TypeScript | 5 | Static types |
+| Chakra UI | 3 | Component library + theming |
+| TanStack Query | 5 | Server state / API data fetching |
+| Payload CMS | 3.80 | Content management (MongoDB-backed) |
+| next-auth | 5 beta | Authentication (delegates to Rails OAuth) |
+| i18next | 26 | Internationalization |
+| Vitest | 4 | Unit testing |
+
+### Directory Structure
+
+```
+next-frontend/src/
+├── app/
+│   ├── (wca)/              # Public WCA pages (layout + routes)
+│   │   ├── competitions/   # Competition list and detail pages
+│   │   ├── persons/        # WCA ID profile pages
+│   │   ├── results/        # Competition results browser
+│   │   ├── regulations/    # WCA Regulations
+│   │   ├── about/          # Static informational pages
+│   │   ├── dashboard/      # Authenticated user dashboard
+│   │   ├── delegates/      # Delegate directory
+│   │   ├── incidents/      # Incident reports
+│   │   ├── export/         # Results export downloads
+│   │   └── ...
+│   ├── (payload)/          # Payload CMS admin UI routes
+│   └── (authjs)/           # Auth.js callback routes
+├── collections/            # Payload CMS content collections
+├── components/             # Shared React components
+├── lib/
+│   ├── wca/                # WCA API client (openapi-fetch)
+│   ├── i18n/               # i18next setup and locale loading
+│   ├── hooks/              # Custom React hooks
+│   ├── staticData/         # Static JSON (events, formats) synced from Rails
+│   ├── live/               # WCA Live WebSocket helpers
+│   └── math/               # Ranking/result calculation utilities
+├── providers/              # React context providers (query, auth, theme)
+├── types/
+│   ├── openapi.ts          # Auto-generated from WCA OpenAPI spec
+│   └── chakra/             # Auto-generated Chakra theme tokens
+├── payload.config.ts       # Payload CMS configuration
+└── auth.ts                 # next-auth configuration
+```
+
+### API Integration
+
+The Next.js frontend uses `openapi-fetch` with types auto-generated from `openapi/wcaCore.yaml`:
+
+```typescript
+// Generated types from the WCA OpenAPI spec
+import type { paths } from "@/types/openapi";
+import createClient from "openapi-fetch";
+
+const client = createClient<paths>({ baseUrl: process.env.NEXT_PUBLIC_API_URL });
+```
+
+Regenerate types after API changes:
+
+```bash
+yarn types:openapi
+```
+
+### Authentication
+
+Authentication flows through the Rails OAuth server (Doorkeeper + `doorkeeper-openid_connect`). `next-auth` (v5) handles the OIDC client side, storing sessions and delegating token management to Rails.
+
+## Background Jobs
+
+<CardGroup cols={2}>
+  <Card title="Sidekiq (Dev/Staging)" icon="layer-group" href="https://github.com/sidekiq/sidekiq">
+    Redis-backed job processing. Runs as the `wca_sidekiq` Docker service. Uses `sidekiq-cron` for scheduled tasks.
+  </Card>
+  <Card title="Shoryuken (Production)" icon="aws" href="https://github.com/ruby-shoryuken/shoryuken">
+    AWS SQS-backed job processor used in production for durability and scalability. Same ActiveJob interface as Sidekiq.
+  </Card>
+</CardGroup>
+
+All jobs inherit from `ApplicationJob` (which inherits `ActiveJob::Base`). The queue adapter is configured per environment:
+
+```ruby
+# config/application.rb
+config.active_job.queue_adapter = :sidekiq
+```
+
+### Key Background Jobs
+
+```
+app/jobs/
+├── compute_auxiliary_data.rb          # Recalculates ranks, records, and averages
+├── dump_public_results_database.rb    # Generates the public results SQL dump
+├── dump_developer_database.rb         # Generates anonymized dev database dump
+├── sync_mailing_lists_job.rb          # Syncs Google Groups for WCA committees
+├── registration_reminder_job.rb       # Emails competitors before their competition
+├── submit_results_nag_job.rb          # Nags organizers to submit results
+├── submit_report_nag_job.rb           # Nags delegates to submit delegate reports
+├── all_sanity_checks_job.rb           # Runs data integrity checks on results
+├── compute_potential_duplicates.rb    # Detects possible duplicate WCA IDs
+├── delegates_metadata_sync_job.rb     # Syncs delegate metadata
+├── update_live_result_job.rb          # Pushes real-time results to WCA Live
+└── notify_translators_job.rb          # Alerts translators to new strings
+```
+
+Scheduled jobs are managed by `sidekiq-cron`. The `WcaCronjob` base class provides common polling behavior, controlled by `CRONJOB_POLLING_SECONDS` (set to `0` in development to disable).
+
+## Database
+
+The primary database is **MySQL 8.4** managed by ActiveRecord. The schema is defined in `db/schema.rb` and updated through versioned migrations in `db/migrate/`.
+
+```
+db/
+├── schema.rb                 # Current ActiveRecord schema (auto-generated)
+├── migrate/                  # ~500+ versioned migration files
+├── seeds.rb                  # Seed entry point (delegates to seedbank)
+├── seeds/                    # Seedbank seed files by domain
+├── results_dump_schema.rb    # Schema for the public results export
+└── developer_dump_schema.rb  # Schema for the anonymized developer dump
+```
+
+### Core Tables
+
+| Table | Description |
+|---|---|
+| `Competitions` | Competition metadata, venue, dates, event list |
+| `Results` | Official WCA results (person × event × round) |
+| `Persons` | WCA ID records (name, country, DOB) |
+| `users` | User accounts (email, Devise auth, roles) |
+| `Registrations` | Competition registrations |
+| `Scrambles` | Official scramble sequences |
+| `RanksAverage` / `RanksSingle` | Precomputed world/continental/national ranks |
+| `live_results` | Real-time in-progress results |
+
+<Note>
+  WCA results data follows a historically established schema (inherited from the original WCA database). Some table names use PascalCase (`Results`, `Persons`, `Competitions`) — a legacy convention.
+</Note>
+
+ActiveRecord encryption (Rails 7.1+) is used for sensitive fields (e.g., 2FA secrets) via keys configured through `ACTIVERECORD_PRIMARY_KEY`, `ACTIVERECORD_DETERMINISTIC_KEY`, and `ACTIVERECORD_KEY_DERIVATION_SALT`.
+
+## Infrastructure
+
+All production infrastructure is defined as Terraform in `infra/wca_on_rails/`:
+
+```
+infra/wca_on_rails/
+├── main.tf           # Root module
+├── variables.tf      # Input variables
+├── production/       # Production environment config
+├── staging/          # Staging environment config
+├── shared/           # Shared resources (VPC, ECR, IAM)
+└── lambda/           # Lambda functions for async tasks
+```
+
+### AWS Services Used
+
+| Service | Purpose |
+|---|---|
+| ECS Fargate | Runs Rails and Sidekiq containers |
+| RDS (MySQL 8.4) | Primary database |
+| ElastiCache (Redis 7) | Sidekiq queues, Action Cable pub/sub, response cache |
+| S3 | Avatar storage, public results dumps, scramble files |
+| CloudFront | CDN for static assets and avatars |
+| SQS | Production job queue (Shoryuken) |
+| SES | Transactional email delivery |
+
+## Key Integrations
+
+<CardGroup cols={2}>
+  <Card title="Stripe" icon="stripe" href="https://stripe.com/docs/api">
+    Competition registration payments. The `ConnectedStripeAccount` model links organizer Stripe accounts. Webhook events are stored in `StripeWebhookEvent` for idempotent processing.
+  </Card>
+  <Card title="PayPal" icon="paypal" href="https://developer.paypal.com/api/rest/">
+    Alternative payment provider for regions where Stripe is unavailable. Configured via `ConnectedPaypalAccount`. Uses the PayPal Orders API v2.
+  </Card>
+  <Card title="OAuth / Doorkeeper" icon="key" href="https://github.com/doorkeeper-gem/doorkeeper">
+    The Rails app is a full OAuth 2.0 authorization server via Doorkeeper with OpenID Connect support. The Next.js frontend and third-party apps authenticate against it.
+  </Card>
+  <Card title="TNoodle" icon="cube" href="https://github.com/thewca/tnoodle">
+    The official WCA scramble generator. Competition scramble files (`.zip`) are generated by TNoodle and uploaded to the Rails platform for verification and storage.
+  </Card>
+</CardGroup>
+
+### Real-Time: WCA Live
+
+WCA Live provides real-time competition results during events. The architecture uses:
+
+- **AnyCable** (`anycable-rails-core` + `anycable-go`) for WebSocket connections — more scalable than Action Cable alone.
+- **Redis** as the pub/sub backend between AnyCable Go and the Rails process.
+- `UpdateLiveResultJob` pushes result updates as they arrive.
+- The Next.js frontend subscribes via `@rails/actioncable` using the AnyCable WebSocket endpoint (`ws://localhost:8085` in development).
+
+### Payments Architecture
+
+```
+Registration → PaymentIntent (Rails) → Stripe/PayPal API
+                     ↓
+              RegistrationPayment (record)
+                     ↓
+              Webhook → StripeRecord/PaypalRecord
+```
+
+Stripe and PayPal are both integrated as "connected accounts," meaning competition organizers link their own Stripe/PayPal accounts, and WCA collects a platform fee.
+
+## Internationalization
+
+The platform supports multiple languages across both the Rails and Next.js layers:
+
+- **Rails**: `rails-i18n` + `i18n-js` with locale files in `config/locales/`. Locale fallback to `:en` is enabled.
+- **Next.js**: `i18next` + `react-i18next` with `i18next-browser-languagedetector`. Translation files are loaded on demand via `i18next-resources-to-backend`.
+- Translators are managed through a dedicated `wca_i18n` gem and notified of new strings via `NotifyTranslatorsJob`.

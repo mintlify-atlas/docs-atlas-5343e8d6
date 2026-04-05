@@ -1,0 +1,419 @@
+---
+title: "Competition Results API"
+description: "Fetch results, per-event results, psych sheets, and competitor lists for WCA competitions."
+---
+
+These endpoints provide result data for completed WCA competitions. Results follow the WCA results database schema: times are stored as integers in centiseconds (or moves for FMC, or special encodings for MBLD and DNF/DNS).
+
+<Note>
+  Result times use WCA's standard encoding: positive integers are centiseconds, `-1` is DNF, `-2` is DNS. For 3x3 Fewest Moves the value is the move count. For 3x3 Multi-Blindfolded, results use a packed integer format.
+</Note>
+
+---
+
+## Get all results for a competition
+
+```
+GET /api/v0/competitions/:id/results
+```
+
+Returns all result records for a competition across all events and rounds.
+
+**Authentication:** Public. Results are only available after the competition has ended and results have been posted.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+### Response fields
+
+Each element in the returned array is a result object:
+
+<ResponseField name="id" type="integer" required>
+  Result record ID.
+</ResponseField>
+
+<ResponseField name="pos" type="integer" required>
+  Final position within the round. Tied positions share the same value.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Competitor's display name.
+</ResponseField>
+
+<ResponseField name="wca_id" type="string" required>
+  Competitor's WCA ID (e.g. `"2019WANG36"`). Empty string for newcomers without a WCA ID at time of submission.
+</ResponseField>
+
+<ResponseField name="country_iso2" type="string" required>
+  Competitor's country as a two-letter ISO 3166-1 alpha-2 code.
+</ResponseField>
+
+<ResponseField name="competition_id" type="string" required>
+  Parent competition ID.
+</ResponseField>
+
+<ResponseField name="event_id" type="string" required>
+  WCIF event ID (e.g. `"333"`, `"222"`, `"333bf"`).
+</ResponseField>
+
+<ResponseField name="round_type_id" type="string" required>
+  Round type identifier. Common values:
+
+  | Value | Round |
+  |-------|-------|
+  | `"1"` | First round |
+  | `"2"` | Second round |
+  | `"3"` | Third round |
+  | `"c"` | Combined first round |
+  | `"d"` | Combined second round |
+  | `"e"` | Combined third round |
+  | `"f"` | Final |
+  | `"g"` | Combined final |
+</ResponseField>
+
+<ResponseField name="format_id" type="string" required>
+  Format identifier. `"a"` = average of 5, `"m"` = mean of 3, `"1"` = best of 1, `"2"` = best of 2, `"3"` = best of 3.
+</ResponseField>
+
+<ResponseField name="best" type="integer" required>
+  Best single attempt result in centiseconds (or special encoding for other event types).
+</ResponseField>
+
+<ResponseField name="average" type="integer" required>
+  Average (or mean) result in centiseconds. `-1` if the average is DNF.
+</ResponseField>
+
+<ResponseField name="attempts" type="integer[]" required>
+  Array of individual attempt results (up to 5 values). Trailing zeros indicate unused attempt slots.
+</ResponseField>
+
+<ResponseField name="best_index" type="integer" required>
+  Zero-based index of the best attempt within `attempts`.
+</ResponseField>
+
+<ResponseField name="worst_index" type="integer" required>
+  Zero-based index of the worst attempt within `attempts`.
+</ResponseField>
+
+<ResponseField name="regional_single_record" type="string">
+  Record label for the best single, if it set a record at the time (e.g. `"WR"`, `"CR"`, `"NR"`). `null` if no record.
+</ResponseField>
+
+<ResponseField name="regional_average_record" type="string">
+  Record label for the average, if applicable. `null` if no record.
+</ResponseField>
+
+### Example
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2003/results"
+```
+
+```json Response (excerpt)
+[
+  {
+    "id": 10001,
+    "pos": 1,
+    "name": "Dan Knights",
+    "wca_id": "2003KNIG01",
+    "country_iso2": "US",
+    "competition_id": "WC2003",
+    "event_id": "333",
+    "round_type_id": "f",
+    "format_id": "a",
+    "best": 2032,
+    "average": 2312,
+    "attempts": [2032, 2408, 2270, 2490, 2259],
+    "best_index": 0,
+    "worst_index": 3,
+    "regional_single_record": null,
+    "regional_average_record": null
+  }
+]
+```
+
+---
+
+## Get results for a specific event
+
+```
+GET /api/v0/competitions/:id/results/:event_id
+```
+
+Returns results for a single event, organised by round. Rounds are returned in descending order (final first, qualifying rounds last).
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+<ParamField path="event_id" type="string" required>
+  WCIF event ID (e.g. `333`, `222`, `444bf`, `pyram`). Must be an event offered at this competition.
+</ParamField>
+
+### Response fields
+
+<ResponseField name="id" type="string" required>
+  Event ID (same as the path parameter).
+</ResponseField>
+
+<ResponseField name="rounds" type="object[]" required>
+  Array of round objects, ordered from final to first round.
+  <Expandable title="round properties">
+    <ResponseField name="id" type="string" required>
+      Round identifier in the format `{event_id}-r{n}` (e.g. `"333-r1"`).
+    </ResponseField>
+    <ResponseField name="roundTypeId" type="string" required>
+      Round type identifier (see the table in the previous section).
+    </ResponseField>
+    <ResponseField name="isH2hMock" type="boolean" required>
+      `true` for head-to-head mock rounds used in certain championship formats. `false` in normal circumstances.
+    </ResponseField>
+    <ResponseField name="results" type="object[]" required>
+      Array of result objects for this round, sorted by position then by name.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/results/333"
+```
+
+```json Response
+{
+  "id": "333",
+  "rounds": [
+    {
+      "id": "333-r4",
+      "roundTypeId": "f",
+      "isH2hMock": false,
+      "results": [
+        {
+          "id": 998001,
+          "pos": 1,
+          "name": "Max Speedcuber",
+          "wca_id": "2020SPEE01",
+          "country_iso2": "US",
+          "competition_id": "WC2025",
+          "event_id": "333",
+          "round_type_id": "f",
+          "format_id": "a",
+          "best": 412,
+          "average": 531,
+          "attempts": [412, 538, 549, 560, 507],
+          "best_index": 0,
+          "worst_index": 3,
+          "regional_single_record": "WR",
+          "regional_average_record": null
+        }
+      ]
+    },
+    {
+      "id": "333-r3",
+      "roundTypeId": "3",
+      "isH2hMock": false,
+      "results": [ ... ]
+    }
+  ]
+}
+```
+
+---
+
+## Get psych sheet
+
+```
+GET /api/v0/competitions/:id/psych-sheet/:event_id
+```
+
+Returns the psych sheet (pre-competition ranking) for a specific event at a competition. The psych sheet ranks registered competitors by their best existing results, helping competitors and spectators anticipate the competition order.
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+<ParamField path="event_id" type="string" required>
+  WCIF event ID.
+</ParamField>
+
+<ParamField query="sort_by" type="string">
+  Override the sort criterion. Accepted values: `single`, `average`. Defaults to the event's standard ranking method.
+</ParamField>
+
+### Response fields
+
+<ResponseField name="sort_by" type="string" required>
+  The primary sort criterion used (`"single"` or `"average"`).
+</ResponseField>
+
+<ResponseField name="sort_by_second" type="string" required>
+  The tiebreaker sort criterion.
+</ResponseField>
+
+<ResponseField name="sorted_rankings" type="object[]" required>
+  Ordered array of competitor ranking objects.
+  <Expandable title="ranking properties">
+    <ResponseField name="pos" type="integer" required>
+      Psych sheet position. Tied competitors share the same position.
+    </ResponseField>
+    <ResponseField name="tied_previous" type="boolean" required>
+      `true` if this entry is tied with the entry immediately above it.
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      Competitor's display name.
+    </ResponseField>
+    <ResponseField name="user_id" type="integer" required>
+      WCA user ID.
+    </ResponseField>
+    <ResponseField name="wca_id" type="string" required>
+      WCA ID. Empty string for newcomers.
+    </ResponseField>
+    <ResponseField name="country_iso2" type="string" required>
+      Two-letter country code.
+    </ResponseField>
+    <ResponseField name="single_best" type="integer" required>
+      Best single result in centiseconds (using WCA encoding). `0` if no result exists.
+    </ResponseField>
+    <ResponseField name="single_rank" type="integer" required>
+      World ranking for single. `0` if unranked.
+    </ResponseField>
+    <ResponseField name="average_best" type="integer" required>
+      Best average result. `0` if no average exists.
+    </ResponseField>
+    <ResponseField name="average_rank" type="integer" required>
+      World ranking for average. `0` if unranked.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/psych-sheet/333"
+```
+
+```bash cURL (sort by single)
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/psych-sheet/333?sort_by=single"
+```
+
+```json Response
+{
+  "sort_by": "average",
+  "sort_by_second": "single",
+  "sorted_rankings": [
+    {
+      "pos": 1,
+      "tied_previous": false,
+      "name": "Max Speedcuber",
+      "user_id": 12345,
+      "wca_id": "2020SPEE01",
+      "country_iso2": "US",
+      "single_best": 412,
+      "single_rank": 1,
+      "average_best": 531,
+      "average_rank": 1
+    },
+    {
+      "pos": 2,
+      "tied_previous": false,
+      "name": "Yiheng Wang (王艺衡)",
+      "user_id": 67890,
+      "wca_id": "2019WANG36",
+      "country_iso2": "CN",
+      "single_best": 456,
+      "single_rank": 5,
+      "average_best": 548,
+      "average_rank": 2
+    }
+  ]
+}
+```
+
+---
+
+## List competitors
+
+```
+GET /api/v0/competitions/:id/competitors
+```
+
+Returns the list of persons who have results at a competition. This differs from the registrations list in that it reflects actual participation — a competitor appears here only if they competed in at least one event.
+
+**Authentication:** Public. Only available after results have been posted.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+### Response
+
+Returns an array of person objects from the WCA results database. Each object represents a unique person who competed.
+
+<ResponseField name="id" type="string" required>
+  Person's WCA ID (e.g. `"2020SPEE01"`).
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Display name, including romanised name in parentheses where applicable.
+</ResponseField>
+
+<ResponseField name="country_iso2" type="string" required>
+  Two-letter country code.
+</ResponseField>
+
+<ResponseField name="gender" type="string">
+  Gender code (`"m"`, `"f"`, or `"o"`).
+</ResponseField>
+
+### Example
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/competitors"
+```
+
+```json Response (excerpt)
+[
+  {
+    "id": "2020SPEE01",
+    "name": "Max Speedcuber",
+    "country_iso2": "US",
+    "gender": "m"
+  },
+  {
+    "id": "2019WANG36",
+    "name": "Yiheng Wang (王艺衡)",
+    "country_iso2": "CN",
+    "gender": "f"
+  }
+]
+```
+
+---
+
+## Notes on result encoding
+
+<AccordionGroup>
+  <Accordion title="Time events (centiseconds)">
+    For most events, times are stored as positive integers representing centiseconds. For example, 7.42 seconds is stored as `742`. Special values:
+
+    | Value | Meaning |
+    |-------|---------|
+    | `0` | No result (unused attempt slot) |
+    | `-1` | DNF (Did Not Finish) |
+    | `-2` | DNS (Did Not Start) |
+  </Accordion>
+
+  <Accordion title="Fewest Moves (FMC)">
+    For `333fm`, the `best` value is the move count (e.g. `24` means 24 moves). The average is stored as the mean × 100 to preserve one decimal place (e.g. `2467` means an average of 24.67 moves). `-1` still represents DNF.
+  </Accordion>
+
+  <Accordion title="Multi-Blindfolded (MBLD)">
+    For `333mbf`, results use a packed integer format: `990000000 - (points * 10000000) + (time_in_seconds * 100) + missed`. For example, a result of 70/70 in 59:59 = `970000000 + 5999 * 100 + 0`. Use the WCA's official decode formula when displaying these values.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,209 @@
+---
+title: "API Overview"
+description: "A guide to the WCA REST API — what it provides, how it's versioned, and how to start making requests."
+---
+
+The WCA API gives developers programmatic access to competition data, results, person profiles, rankings, records, and more. All responses are JSON. Most read endpoints are public and require no authentication.
+
+## Base URL
+
+All API endpoints are served from:
+
+```
+https://www.worldcubeassociation.org/api/
+```
+
+Both API versions live under this base:
+
+| Version | Prefix | Purpose |
+|---------|--------|---------|
+| v0 | `/api/v0/` | Stable, public API. Competitions, results, persons, rankings, records, search. |
+| v1 | `/api/v1/` | Newer API focused on competition registrations and live results. Requires authentication. |
+
+<Note>
+  The rate limit for the public API is **60 requests per minute** per IP address. Requests from internal/private IP ranges (loopback, RFC 1918) are exempt. Exceeding this limit returns `429 Too Many Requests`.
+</Note>
+
+## Response Format
+
+All responses are `application/json`. Successful responses return the requested data directly or wrapped in a named key (e.g. `{ "competition": {...} }` or `{ "result": [...] }`). Error responses always use the shape:
+
+```json
+{
+  "error": "Human-readable error message"
+}
+```
+
+For record-not-found errors, additional metadata is included:
+
+```json
+{
+  "error": "Couldn't find Competition with 'id'=BadId",
+  "data": {
+    "model": "Competition",
+    "id": "BadId"
+  }
+}
+```
+
+### Common HTTP Status Codes
+
+| Status | Meaning |
+|--------|---------|
+| `200 OK` | Request succeeded |
+| `400 Bad Request` | Missing or invalid query parameter |
+| `401 Unauthorized` | No valid access token provided |
+| `403 Forbidden` | Token is valid but lacks the required scope or permission |
+| `404 Not Found` | The requested resource does not exist |
+| `429 Too Many Requests` | Rate limit exceeded |
+
+## Pagination
+
+Endpoints that return collections are paginated. Use the `page` query parameter (1-indexed) and `per_page` to control page size. The default page size is **20** results (from `DEFAULT_API_RESULT_LIMIT` in the source). Pagination metadata is returned in the `Link` response header following the [RFC 5988](https://datatracker.ietf.org/doc/html/rfc5988) format used by Rails' `kaminari` pagination gem.
+
+```bash
+# Fetch page 2 of competitions, 25 per page
+curl "https://www.worldcubeassociation.org/api/v0/competitions?page=2&per_page=25"
+```
+
+## Quick Start: Unauthenticated Request
+
+Most read endpoints need no token. Here is a real request that fetches a competition by its WCA ID:
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/competitions/WC2025
+```
+
+```json
+{
+  "id": "WC2025",
+  "name": "World Rubik's Cube Championship 2025",
+  "venue": "...",
+  "start_date": "2025-07-14",
+  "end_date": "2025-07-20",
+  "country_iso2": "AE",
+  "event_ids": ["222", "333", "444", "555", "666", "777", "333bf", "333oh", "clock", "minx", "pyram", "skewb", "sq1", "444bf", "555bf", "333mbf"],
+  "competitor_limit": 1500,
+  ...
+}
+```
+
+Fetch a person's profile by WCA ID:
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/persons/2003POCH01
+```
+
+---
+
+## API v0 Endpoints
+
+v0 is the stable, publicly documented API. All endpoints below are `GET` unless noted.
+
+<CardGroup cols={2}>
+  <Card title="Competitions" icon="trophy" href="/api/competitions/list">
+    List and search competitions. Retrieve details, results, registrations, schedules, scrambles, psych sheets, podiums, and WCIF data for any competition.
+  </Card>
+  <Card title="Persons & Results" icon="user" href="/api/users/persons">
+    Fetch competitor profiles by WCA ID. Includes personal records, competition history, and result breakdowns by event.
+  </Card>
+  <Card title="Rankings & Records" icon="chart-bar" href="/api/results/rankings">
+    Query world, continental, and national rankings by event and result type (single or average). Retrieve current world, continental, and national records in one call.
+  </Card>
+  <Card title="Users" icon="circle-user" href="/api/users/me">
+    Look up user accounts by internal ID or WCA ID. Authenticated requests to `/api/v0/users/me` return the current user with email and rankings.
+  </Card>
+  <Card title="Search" icon="magnifying-glass" href="/api/data/search">
+    Omnisearch across competitions, users, persons, regulations, and incidents. Individual `/search/competitions`, `/search/users`, and `/search/persons` sub-routes are also available.
+  </Card>
+  <Card title="Public Data Export" icon="database" href="/api/data/export">
+    Metadata about the latest public results database dump — download URLs, file sizes, and export format version for both SQL and TSV variants.
+  </Card>
+</CardGroup>
+
+### Full v0 Endpoint List
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/v0/competitions` | No | List / search competitions |
+| GET | `/api/v0/competitions/:id` | No | Competition details |
+| GET | `/api/v0/competitions/:id/results` | No | All results for a competition |
+| GET | `/api/v0/competitions/:id/results/:event_id` | No | Results for a specific event |
+| GET | `/api/v0/competitions/:id/registrations` | No | Accepted registrations |
+| GET | `/api/v0/competitions/:id/competitors` | No | Competitor list |
+| GET | `/api/v0/competitions/:id/events` | No | Events in WCIF format |
+| GET | `/api/v0/competitions/:id/schedule` | No | Schedule in WCIF format |
+| GET | `/api/v0/competitions/:id/wcif/public` | No | Full public WCIF document |
+| GET | `/api/v0/competitions/:id/wcif` | Yes (`manage_competitions`) | Full WCIF including private data |
+| PATCH | `/api/v0/competitions/:id/wcif` | Yes (`manage_competitions`) | Update competition WCIF |
+| GET | `/api/v0/competitions/:id/podiums` | No | Podium results |
+| GET | `/api/v0/competitions/:id/scrambles` | No | All scrambles |
+| GET | `/api/v0/competitions/:id/psych-sheet/:event_id` | No | Psych sheet for an event |
+| GET | `/api/v0/competitions/:id/tabs` | No | Competition info tabs |
+| GET | `/api/v0/competition_index` | No | Paginated list optimised for browsing |
+| GET | `/api/v0/competitions/mine` | Yes | Competitions for the authenticated user |
+| GET | `/api/v0/persons` | No | List persons (WCA competitors) |
+| GET | `/api/v0/persons/:wca_id` | No | Person profile |
+| GET | `/api/v0/persons/:wca_id/results` | No | All competition results |
+| GET | `/api/v0/persons/:wca_id/records` | No | Records held by a person |
+| GET | `/api/v0/persons/:wca_id/competitions` | No | Competitions attended |
+| GET | `/api/v0/persons/:wca_id/personal_records` | No | Personal records per event |
+| GET | `/api/v0/results/rankings/:event_id/:type` | No | Rankings (`single` or `average`) |
+| GET | `/api/v0/records` | No | Current world/continental/national records |
+| GET | `/api/v0/users/:id` | No | User by numeric ID |
+| GET | `/api/v0/users/:wca_id` | No | User by WCA ID |
+| GET | `/api/v0/users/me` | Yes | Authenticated user's profile |
+| GET | `/api/v0/users/me/personal_records` | Yes | Authenticated user's PRs |
+| GET | `/api/v0/users/me/preferred_events` | Yes | Authenticated user's preferred events |
+| GET | `/api/v0/users/me/permissions` | Yes | Authenticated user's permissions |
+| GET | `/api/v0/users/me/bookmarks` | Yes | Bookmarked competition IDs |
+| GET | `/api/v0/search` | No | Omnisearch |
+| GET | `/api/v0/search/competitions` | No | Search competitions |
+| GET | `/api/v0/search/users` | No | Search users |
+| GET | `/api/v0/search/persons` | No | Search persons |
+| GET | `/api/v0/search/posts` | No | Search news posts |
+| GET | `/api/v0/search/regulations` | No | Search WCA Regulations |
+| GET | `/api/v0/search/incidents` | No | Search incidents |
+| GET | `/api/v0/delegates` | No | List all active delegates |
+| GET | `/api/v0/countries` | No | List all WCA countries |
+| GET | `/api/v0/export/public` | No | Public results DB export metadata |
+| GET | `/api/v0/scramble-program` | No | Allowed TNoodle versions |
+| GET | `/api/v0/known-timezones` | No | Supported timezone identifiers |
+| GET | `/api/v0/me` | Yes | OAuth token owner (basic) |
+| GET | `/api/v0/healthcheck` | No | API health status |
+
+---
+
+## API v1 Endpoints
+
+v1 is the newer API. It currently covers competition registrations and live results. All v1 requests require authentication.
+
+<Note>
+  v1 is not yet intended for general third-party use. Getting a JWT token currently requires a logged-in session on the website. The OAuth bearer token flow is the intended long-term path.
+</Note>
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/competitions/:id/registrations` | List registrations for a competition |
+| GET | `/api/v1/competitions/:id/registrations/:reg_id` | Single registration |
+| POST | `/api/v1/competitions/:id/registrations` | Create a registration |
+| PATCH | `/api/v1/competitions/:id/registrations/:reg_id` | Update a registration |
+| PATCH | `/api/v1/competitions/:id/registrations/bulk_update` | Bulk-update registrations |
+| PATCH | `/api/v1/competitions/:id/registrations/bulk_auto_accept` | Auto-accept waitlist entries |
+| GET | `/api/v1/competitions/:id/registration_config` | Registration configuration |
+| GET | `/api/v1/competitions/:id/live/rounds` | Live: round admin overview |
+| GET | `/api/v1/competitions/:id/live/rounds/:round_id` | Live: results for a round |
+| POST | `/api/v1/competitions/:id/live/rounds/:round_id` | Live: submit result |
+| PATCH | `/api/v1/competitions/:id/live/rounds/:round_id` | Live: update result |
+| PUT | `/api/v1/competitions/:id/live/rounds/:round_id/open` | Live: open a round |
+| PUT | `/api/v1/competitions/:id/live/rounds/:round_id/clear` | Live: clear all results |
+| GET | `/api/v1/competitions/:id/live/podiums` | Live: current podiums |
+
+---
+
+## Further Resources
+
+- **API Help page**: [worldcubeassociation.org/help/api](https://www.worldcubeassociation.org/help/api) — the canonical help page, including OAuth token examples
+- **OpenAPI spec**: available in the WCA website repository at `next-frontend/openapi/wcaCore.yaml`
+- **Authentication**: see [API Authentication](/api/authentication) for OAuth setup and scope details
+- **Public data export**: bulk-download the full results database at [worldcubeassociation.org/export/results](https://www.worldcubeassociation.org/export/results)

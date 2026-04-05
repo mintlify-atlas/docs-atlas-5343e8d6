@@ -1,0 +1,113 @@
+---
+title: "Records"
+description: "How World Records, Continental Records, and National Records are tracked, validated, and displayed across all WCA events."
+---
+
+A WCA record is the best official result ever achieved in a given event within a specific geographic scope. Records exist at three levels: world, continental, and national. Every competition result is checked against existing records at the time results are posted — if a result beats the standing record, the appropriate record code is written into the result.
+
+You can view current records at [worldcubeassociation.org/results/records](/results/records).
+
+## Record levels
+
+**World Record (WR)** — The best result ever achieved globally in an event. There is exactly one WR holder per event per type (single and average) at any given time, though multiple competitors can share the same WR value.
+
+**Continental Record (CR)** — The best result achieved within a continent. Each of the WCA's seven continental regions has its own record abbreviation:
+
+| Code | Region |
+|---|---|
+| `ER` | Europe |
+| `NAR` | North America |
+| `AsR` | Asia |
+| `AfR` | Africa |
+| `SAR` | South America |
+| `OcR` | Oceania |
+
+**National Record (NR)** — The best result achieved within a single country. Every country recognised by the WCA tracks national records independently.
+
+Records are stored in the `regional_single_record` and `regional_average_record` columns of the `Results` table. The value is a short string (up to 3 characters) holding the record code, or an empty string if the result was not a record.
+
+## How records are tracked
+
+When a delegate submits competition results, the WCA platform validates the results and determines which, if any, set new records. The check compares each result against the current best for the same event, type, and geographic scope. If the result is strictly better, the record code is written to that result row and all previous holders of that record lose the designation for that scope.
+
+The `check_regional_records.rb` library handles this validation logic. Records are evaluated in chronological order across rounds within a competition day, meaning a competitor who sets a WR in a first round and then betters it in a final will have `WR` on both results.
+
+The `records` page uses a SQL query that unions `single` and `average` record results:
+
+```sql
+SELECT results.*, 'single' type, best value, regional_single_record record_name
+  FROM results WHERE regional_single_record <> ''
+UNION
+SELECT results.*, 'average' type, average value, regional_average_record record_name
+  FROM results WHERE regional_average_record <> ''
+```
+
+For the current records view, the page further narrows this to the minimum value per event per scope using the `concise_single_results` and `concise_average_results` views.
+
+## Viewing records
+
+The records page at `/results/records` supports several display modes controlled by the `show` parameter:
+
+| Mode | Description |
+|---|---|
+| `mixed` (default) | Single and average records shown together in one table per event |
+| `slim` | Single and average shown side-by-side in two columns |
+| `separate` | Single and average shown in two fully separate tables |
+| `history` | All historical record-breaking results for the selected scope, ordered by event then date descending |
+| `mixed history` | Historical records ordered by date descending, mixing all events |
+
+You can also filter by:
+- **Event** — a specific event ID or all events
+- **Region** — world, continent, or country
+- **Gender** — all, male, or female
+
+The `record_timestamp` displayed on the page reflects the last time auxiliary data was successfully recomputed. Records shown are accurate as of that timestamp.
+
+## Historical records
+
+Selecting **history** or **mixed history** from the show dropdown reveals every result that was a record at the time it was set, not just the current record holders. This lets you trace how a world record has progressed over time.
+
+The history query includes all results where `regional_single_record` or `regional_average_record` is non-empty, filtered by region and event. For world scope, only results with `record_name = 'WR'` are shown. For continental scope, results with `WR` or the continent's own record code are included. For national scope, all non-empty record names are included.
+
+## Record notation in competition results
+
+Every result row on a competitor's profile or on a competition results page shows the record codes inline. A result that set a World Record when achieved is permanently annotated with `WR`, even if it has since been surpassed. This is because the code reflects the record status at the time the result was achieved, not today.
+
+Example result row for a competitor who set a national record:
+
+| Round | Result | Single | Average |
+|---|---|---|---|
+| Final | 2nd | **7.43** NR | 8.91 NR |
+
+Both the single and the average bear `NR` because both were national records when achieved.
+
+## Championship records
+
+Championships are a special type of competition designation. A competition can be designated as a World Championship, a Continental Championship, or a National Championship via the `championships` table, which stores a `championship_type` string linked to a `competition_id`.
+
+The `eligible_country_iso2s_for_championship` table defines which countries are eligible to have their results count toward a given championship type — for example, only countries within Europe are eligible for the European Championship.
+
+Championship designations do not create a separate record tier. A result set at a championship competes for the same WR/CR/NR designations as any other WCA competition.
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Can two competitors hold the same world record?">
+    Yes. If two competitors achieve the exact same result value, both results receive the `WR` annotation and both competitors are listed as co-world-record holders. The same applies to continental and national records.
+  </Accordion>
+  <Accordion title="How quickly are records updated after a competition?">
+    Records are embedded in results at the time the delegate submits them for review. Once WCA staff approve and post the results, the records become visible on the website. The `ComputeAuxiliaryData` background job then rebuilds the rankings tables, which may take a short time after posting. The records page shows a `record_timestamp` indicating when the last successful computation ran.
+  </Accordion>
+  <Accordion title="Can a record be removed after it is set?">
+    Yes, if a result is later found to be invalid — for example due to a rules violation discovered after posting — WCA staff can correct or remove the result. The affected record code is then removed and the previous record holder's result is restored.
+  </Accordion>
+  <Accordion title="Why does a result show NR even though it is no longer the national record?">
+    The record code on a result row is permanent: it reflects whether the result was a national record when it was first achieved. If a faster result was set at a later competition, the older result keeps its `NR` annotation as a historical marker. The current NR holder can be found by checking the rankings page filtered to single or average for the relevant country.
+  </Accordion>
+  <Accordion title="Are records tracked for unofficial events?">
+    No. Only official WCA events (those with `events.rank < 990` in the database) are included in record tracking. The `rank` field on the `Events` table determines event eligibility; values of 990 or higher indicate unofficial or retired events that do not count for records or rankings.
+  </Accordion>
+  <Accordion title="What happens to records if a competition is cancelled?">
+    Cancelled competitions have their `cancelled_at` and `cancelled_by` fields set. The platform excludes cancelled competitions from public rankings and records queries via the `show_at_all` flag on the `competitions` table. Results from cancelled competitions are not visible in public-facing record lists.
+  </Accordion>
+</AccordionGroup>

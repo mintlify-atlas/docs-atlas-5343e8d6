@@ -1,0 +1,104 @@
+---
+title: "Competitions Overview"
+description: "What WCA competitions are, how they are structured, and the lifecycle from proposal to posted results."
+---
+
+A WCA competition is an official speedcubing event sanctioned by the World Cube Association. Every competition follows the WCA Regulations, uses approved scrambles, and is run under the supervision of at least one WCA Delegate. Only results from WCA competitions count toward official personal bests, national records, continental records, and world records.
+
+## Competition lifecycle
+
+Every competition passes through a defined sequence of stages, from initial proposal all the way through to final results posting.
+
+<Steps>
+  <Step title="Proposal">
+    An organizer or delegate creates a competition in the WCA website. At this point the competition exists in the database but is not visible to the public. The organizer fills in basic details: name, venue, country, dates, and events.
+  </Step>
+  <Step title="Internal review">
+    The delegate reviews the competition details and confirms that everything meets WCA requirements — minimum 28 days in advance, at least one event, a complete schedule, advancement conditions for every non-final round, and a valid registration window. The delegate submits a confirmation request.
+  </Step>
+  <Step title="WCAT announcement">
+    The WCA Competition Announcement Team (WCAT) reviews the confirmed competition. When WCAT approves it, the competition is announced: `announced_at` and `announced_by` are set, and `show_at_all` is set to `true`. The competition becomes publicly visible and organizers receive an email notification.
+  </Step>
+  <Step title="Registration open">
+    When the `registration_open` timestamp is reached, competitors can register. If WCA registration is used, they fill out the registration form on the WCA website and pay any required entry fee. Registration closes at `registration_close`.
+  </Step>
+  <Step title="Competition">
+    The event runs on the scheduled dates. Competitors compete in their registered events following the WCA Regulations. Scoretaking happens via WCA Live, an external tool, or an internal scoretaking integration depending on the competition's configuration.
+  </Step>
+  <Step title="Results submission">
+    After the competition ends, the delegate uploads the results JSON (either exported from WCA Live or constructed manually) and scramble files to the WCA website. The delegate runs newcomer checks and submits results to the WCA Results Team (WRT).
+  </Step>
+  <Step title="Results posted">
+    WRT reviews the inbox results, resolves any issues, and posts the results. `results_posted_at` and `results_posted_by` are set. Official results become publicly visible and count toward rankings and records.
+  </Step>
+  <Step title="Delegate report">
+    Staff delegates file a delegate report covering the summary, venue, organization, incidents, and any WRC or WIC feedback requests. The report is posted and distributed to regional mailing lists.
+  </Step>
+</Steps>
+
+## Competition types
+
+<CardGroup cols={3}>
+  <Card
+    title="Regular competition"
+    icon="trophy"
+    href="/competitions/organizing"
+  >
+    A standard WCA competition open to all competitors. Held at a single venue over one to six days. Can include any combination of the 17 official WCA events.
+  </Card>
+  <Card
+    title="Championship"
+    icon="medal"
+    href="/competitions/organizing"
+  >
+    A competition designated as a national, continental, or world championship. Championships have dedicated championship records and may have additional qualification requirements or event restrictions.
+  </Card>
+  <Card
+    title="Competition series"
+    icon="list-ordered"
+    href="/competitions/organizing"
+  >
+    Two or more competitions linked together under a `CompetitionSeries`. Competitors can register for any competition in the series, but only one accepted registration per series is allowed at a time. Series competitions must be within a defined proximity in both time and distance.
+  </Card>
+</CardGroup>
+
+## Visibility and status
+
+A competition's public visibility is controlled by two independent flags: `confirmed_at` (whether the delegate has approved the details) and `show_at_all` (whether WCAT has made it publicly visible).
+
+| Status | `confirmed_at` | `show_at_all` | `announced_at` | Description |
+|---|---|---|---|---|
+| Draft | null | false | null | Visible only to managers. Not yet confirmed by the delegate. |
+| Confirmed | set | false | null | Delegate has confirmed, but WCAT has not yet announced. |
+| Announced | set | true | set | Publicly visible. Registration may not be open yet. |
+| Registration open | set | true | set | Registration window is currently active. |
+| Registration closed | set | true | set | Past `registration_close`; competition has not yet started. |
+| Cancelled | set | true | — | Marked cancelled by WCAT. Displayed with a cancelled label. |
+| Results submitted | set | true | set | Delegate has submitted results; WRT is reviewing. |
+| Results posted | set | true | set | Official results are visible. |
+
+<Note>
+  A competition with results still in review shows a "results still processing" message to the public and a "results not posted" warning to admins.
+</Note>
+
+## Key fields
+
+| Field | Purpose |
+|---|---|
+| `name` | Full competition name, must match the pattern `Name YYYY` (max 50 characters). |
+| `cell_name` | Short display name used in tables and lists (max 32 characters). Auto-generated from the full name. |
+| `id` | URL-safe identifier, auto-generated from the competition name and year. |
+| `start_date` / `end_date` | Competition dates. Must be at least 28 days in the future when confirming. Span cannot exceed 6 days. |
+| `registration_open` / `registration_close` | Registration window. Both dates must be before `start_date`. Registration cannot open fewer than 48 hours after announcement. |
+| `competitor_limit` | Maximum number of accepted competitors. When reached, new registrations go to the waiting list. |
+| `use_wca_registration` | Whether the WCA website handles registration directly (`true`) or an external registration page is used. |
+| `scoretaking_software` | One of `external`, `wca_live`, or `internal`. Controls which system records results during the competition. |
+
+## Registration status
+
+The registration window has four possible states, computed from the current time relative to `registration_open` and `registration_close`:
+
+- **Not yet opened** — before `registration_open`
+- **Open** — between `registration_open` and `registration_close`, and not full
+- **Full** — the accepted-and-pending-paid count has reached `competitor_limit`
+- **Past** — after `registration_close`

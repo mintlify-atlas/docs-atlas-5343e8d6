@@ -1,0 +1,210 @@
+---
+title: "Rankings API"
+description: "Retrieve current WCA world rankings for any event and result type, with optional region and gender filters."
+---
+
+The rankings endpoint returns live rankings calculated from the WCA results database. Rankings are derived from a pre-computed `concise_single_results` / `concise_average_results` view that contains each person's best result per event. Results are cached and refreshed after each `ComputeAuxiliaryData` run.
+
+The API enforces a **60 requests per minute** rate limit per IP address for external clients.
+
+<Note>
+  Rankings are currently capped at the top **100 persons** per query regardless of what you pass in `show`. The "show N results" and "all years" filter modes are temporarily disabled while the next-generation frontend migration completes.
+</Note>
+
+---
+
+## Get rankings
+
+```
+GET /api/v0/results/rankings/:event_id/:type
+```
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/results/rankings/333/average"
+```
+
+### Path parameters
+
+<ParamField path="event_id" type="string" required>
+  WCA event identifier. Common values:
+
+  | ID | Event |
+  |----|-------|
+  | `333` | 3x3x3 Cube |
+  | `222` | 2x2x2 Cube |
+  | `444` | 4x4x4 Cube |
+  | `555` | 5x5x5 Cube |
+  | `666` | 6x6x6 Cube |
+  | `777` | 7x7x7 Cube |
+  | `333bf` | 3x3x3 Blindfolded |
+  | `333fm` | 3x3x3 Fewest Moves |
+  | `333oh` | 3x3x3 One-Handed |
+  | `clock` | Clock |
+  | `minx` | Megaminx |
+  | `pyram` | Pyraminx |
+  | `skewb` | Skewb |
+  | `sq1` | Square-1 |
+  | `444bf` | 4x4x4 Blindfolded |
+  | `555bf` | 5x5x5 Blindfolded |
+  | `333mbf` | 3x3x3 Multi-Blind |
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  Result type. One of:
+  - `single` — best single solve
+  - `average` — best average of 5 (or mean of 3 for applicable formats)
+</ParamField>
+
+### Query parameters
+
+<ParamField query="region" type="string">
+  Filter rankings to a specific region. Accepts:
+  - A continent ID: `Asia`, `Europe`, `North America`, `South America`, `Africa`, `Oceania`
+  - A country ISO 3166-1 alpha-2 code: `US`, `CN`, `DE`, etc.
+  - Omit or set to `world` to return global rankings.
+</ParamField>
+
+<ParamField query="show" type="string">
+  Controls the result set mode. Currently only `"100 persons"` is active (the default). Other modes (`results`, `by region`) are accepted by the parser but return the same 100-person behaviour during the migration period.
+</ParamField>
+
+<ParamField query="gender" type="string">
+  Filter by gender. Accepts `Male` or `Female`. Omit for all genders combined.
+</ParamField>
+
+### Response
+
+```json
+{
+  "rankings": [
+    {
+      "id": 6709306,
+      "pos": 1,
+      "person_id": "2019WANG36",
+      "person_name": "Yiheng Wang (王艺衡)",
+      "country_id": "China",
+      "competition_country_id": "China",
+      "competition_id": "HangzhouOpen2024",
+      "competition_name": "Hangzhou Open 2024",
+      "start_date": "2024-10-05",
+      "event_id": "333",
+      "round_type_id": "f",
+      "round_id": null,
+      "format_id": "a",
+      "attempts": [337, 418, 441, 396, 423],
+      "best": 337,
+      "average": 418,
+      "regional_single_record": "WR",
+      "regional_average_record": null,
+      "updated_at": "2024-10-06T08:22:11.000Z",
+      "value": 418,
+      "type": "average"
+    }
+  ],
+  "timestamp": "2025-03-15"
+}
+```
+
+<ResponseField name="rankings" type="array" required>
+  Array of ranking entries, ordered by `value` ascending (best first), then `person_name` alphabetically.
+
+  <Expandable title="ranking entry fields">
+    <ResponseField name="id" type="integer" required>
+      Internal result database ID.
+    </ResponseField>
+    <ResponseField name="pos" type="integer" required>
+      Position in the round's result list (1 = first place in that specific round, not world rank).
+    </ResponseField>
+    <ResponseField name="person_id" type="string" required>
+      WCA ID of the competitor (e.g. `2019WANG36`).
+    </ResponseField>
+    <ResponseField name="person_name" type="string" required>
+      Competitor's name as recorded in the results database. May include a romanisation and local-script name.
+    </ResponseField>
+    <ResponseField name="country_id" type="string" required>
+      Country name string as stored in the WCA results database (e.g. `China`, `United States`).
+    </ResponseField>
+    <ResponseField name="competition_country_id" type="string" required>
+      Country where the competition that produced this result took place.
+    </ResponseField>
+    <ResponseField name="competition_id" type="string" required>
+      Unique competition identifier (e.g. `HangzhouOpen2024`).
+    </ResponseField>
+    <ResponseField name="competition_name" type="string" required>
+      Human-readable competition name.
+    </ResponseField>
+    <ResponseField name="start_date" type="string" required>
+      ISO 8601 date of the first day of the competition.
+    </ResponseField>
+    <ResponseField name="event_id" type="string" required>
+      WCA event ID (matches the path parameter).
+    </ResponseField>
+    <ResponseField name="round_type_id" type="string" required>
+      Round type code. Common values: `c` (combined), `1` (first round), `2` (second round), `f` (final).
+    </ResponseField>
+    <ResponseField name="format_id" type="string" required>
+      Format code. `a` = average of 5, `m` = mean of 3, `1` = best of 1, `2` = best of 2, `3` = best of 3, `5` = best of 5.
+    </ResponseField>
+    <ResponseField name="attempts" type="array" required>
+      Individual solve times in centiseconds. `-1` = DNF, `-2` = DNS, `0` = unused/skipped attempt slot. FMC uses move counts; MBLD uses a special encoding.
+    </ResponseField>
+    <ResponseField name="best" type="integer" required>
+      Best single attempt from this result row, in centiseconds.
+    </ResponseField>
+    <ResponseField name="average" type="integer" required>
+      Average/mean result in centiseconds. `0` if no average was recorded.
+    </ResponseField>
+    <ResponseField name="regional_single_record" type="string | null" required>
+      Record designation for the single, if applicable (`WR`, `AsR`, `NR`, etc.), or `null`.
+    </ResponseField>
+    <ResponseField name="regional_average_record" type="string | null" required>
+      Record designation for the average, if applicable, or `null`.
+    </ResponseField>
+    <ResponseField name="value" type="integer" required>
+      The value used for ranking: equals `average` when type is `average`, or `best` when type is `single`.
+    </ResponseField>
+    <ResponseField name="updated_at" type="string" required>
+      ISO 8601 datetime when this result row was last updated.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="timestamp" type="string" required>
+  ISO 8601 date of the last successful `ComputeAuxiliaryData` run. Rankings reflect results through this date.
+</ResponseField>
+
+---
+
+## Examples
+
+<CodeGroup>
+
+```bash Global 3x3 singles
+curl "https://www.worldcubeassociation.org/api/v0/results/rankings/333/single"
+```
+
+```bash Top 100 3x3 averages in Europe
+curl "https://www.worldcubeassociation.org/api/v0/results/rankings/333/average?region=Europe"
+```
+
+```bash Top Pyraminx singles in the United States
+curl "https://www.worldcubeassociation.org/api/v0/results/rankings/pyram/single?region=US"
+```
+
+```bash Top female 4x4 averages
+curl "https://www.worldcubeassociation.org/api/v0/results/rankings/444/average?gender=Female"
+```
+
+</CodeGroup>
+
+---
+
+## Result encoding
+
+Times are stored and returned in **centiseconds** for timed events. Notable exceptions:
+
+- **FMC (333fm):** Values represent the number of moves (single) or the mean of three move counts multiplied by 100 (average).
+- **MBLD (333mbf):** Uses a packed integer encoding. The value encodes the number solved, attempted, and time taken. Use the WCA MBLD decoder to interpret.
+- **DNF:** Represented as `-1`.
+- **DNS:** Represented as `-2`.
+- **Unused/skipped attempt slot:** Represented as `0`.

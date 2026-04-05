@@ -1,0 +1,137 @@
+---
+title: "Data Export API"
+description: "Access metadata and download URLs for the public WCA results database export."
+---
+
+The WCA publishes its full competition results database as periodic public data exports. These exports contain every official WCA result, competitor, competition, and country record ever recorded. The export metadata endpoint tells you when the last export was generated and provides signed download URLs.
+
+The export is regenerated automatically by the `DumpPublicResultsDatabase` background job. Each successful run updates the `export_date` and the download URLs.
+
+The API enforces a **60 requests per minute** rate limit per IP address for external clients.
+
+---
+
+## Get export metadata
+
+```
+GET /api/v0/export/public
+```
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/export/public
+```
+
+This endpoint accepts no query parameters and does not require authentication.
+
+### Response
+
+```json
+{
+  "export_date": "2025-11-25T00:00:00.000Z",
+  "export_version": "v2.0.2",
+  "sql_url": "https://www.worldcubeassociation.org/export/results/v2/sql",
+  "sql_filesize_bytes": 367001600,
+  "tsv_url": "https://www.worldcubeassociation.org/export/results/v2/tsv",
+  "tsv_filesize_bytes": 298450944,
+  "developer_url": "https://assets.worldcubeassociation.org/export/developer/wca-developer-database-dump.zip",
+  "readme": "# WCA Results Export\n\nThis export contains..."
+}
+```
+
+<ResponseField name="export_date" type="string" required>
+  ISO 8601 datetime string indicating when the current export was generated (e.g. `2025-11-25T00:00:00.000Z`). Use this to detect whether new data is available since your last download.
+</ResponseField>
+
+<ResponseField name="export_version" type="string">
+  Schema version string of the export format (e.g. `"v2.0.2"`). The current version is `v2.0.2`. A change in this value indicates breaking schema changes — re-check the `readme` field whenever this changes.
+</ResponseField>
+
+<ResponseField name="sql_url" type="string" required>
+  Permalink URL for the SQL export (MySQL dump, zip-compressed). This URL is stable and always resolves to the latest export. The actual file is served from cloud storage; follow redirects.
+</ResponseField>
+
+<ResponseField name="sql_filesize_bytes" type="number" required>
+  Size of the SQL export file in bytes. Use this to show progress bars or validate a completed download. The file is typically several hundred megabytes.
+</ResponseField>
+
+<ResponseField name="tsv_url" type="string" required>
+  Permalink URL for the TSV export (tab-separated values, one file per table, zip-compressed). This URL is stable and always resolves to the latest export. The file is a `.zip` archive containing one `.tsv` file per table.
+</ResponseField>
+
+<ResponseField name="tsv_filesize_bytes" type="number" required>
+  Size of the TSV export zip file in bytes.
+</ResponseField>
+
+<ResponseField name="developer_url" type="string">
+  Direct URL to the developer convenience SQL export hosted on `assets.worldcubeassociation.org`. This export is a sanitized, ready-to-import version intended for local development and prototyping. Private data is replaced (dates of birth, emails, passwords). Not identical to the full public export.
+</ResponseField>
+
+<ResponseField name="readme" type="string" required>
+  Markdown-formatted readme describing the export schema, table structures, and data conventions. Read this before importing — the schema includes denormalized fields and WCA-specific encoding conventions.
+</ResponseField>
+
+---
+
+## Downloading the export
+
+<Steps>
+  <Step title="Fetch the metadata">
+    Call `GET /api/v0/export/public` to get the current `export_date`, `sql_url`, and `tsv_url`.
+
+    ```bash
+    curl -s https://www.worldcubeassociation.org/api/v0/export/public | python3 -m json.tool
+    ```
+  </Step>
+
+  <Step title="Choose your format">
+    - **SQL** (`sql_url`): Best for importing into a MySQL-compatible database. Includes `CREATE TABLE` statements and `INSERT` data. Import with `mysql -u root wca < export.sql` after decompressing.
+    - **TSV** (`tsv_url`): Best for loading into pandas, DuckDB, spreadsheets, or custom parsers. One `.tsv` file per table, all packaged in a zip archive.
+    - **Developer SQL** (`developer_url`): Faster to download and pre-configured for local use. Use this if you want to get a database running quickly without the full export.
+  </Step>
+
+  <Step title="Download the file">
+    Both the SQL and TSV exports are delivered as `.zip` archives. Use `unzip` to extract them.
+
+    ```bash
+    # Download SQL export (follow redirects with -L)
+    curl -L -o wca_export.sql.zip "$(
+      curl -s https://www.worldcubeassociation.org/api/v0/export/public \
+        | node -e "let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).sql_url))"
+    )"
+
+    # Unzip the archive
+    unzip wca_export.sql.zip
+
+    # Import into MySQL
+    mysql -u root -p wca_db < WCA_export.sql
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  The SQL export is a full MySQL dump. It requires a MySQL 8.0-compatible server. Attempting to import into PostgreSQL or SQLite without conversion will fail due to MySQL-specific syntax.
+</Warning>
+
+---
+
+## Export contents
+
+The export includes the following main tables (as documented in the `readme` field of the response):
+
+| Table | Description |
+|-------|-------------|
+| `competitions` | All official WCA competitions |
+| `results` | Every recorded result for every round |
+| `result_attempts` | Individual attempt values per result (v2 only) |
+| `persons` | All competitors who have ever competed |
+| `ranks_single` | Current world/continental/national rankings for singles |
+| `ranks_average` | Current world/continental/national rankings for averages |
+| `events` | WCA event definitions |
+| `formats` | Round format definitions |
+| `countries` | Country and continent mappings |
+| `scrambles` | Official scramble sequences per round |
+| `championships` | Championship designations for competitions |
+
+<Note>
+  The export does not include personally identifiable information beyond what is visible on the public WCA website (competitor names, nationalities, and competition results). Dates of birth are not included in the public export.
+</Note>

@@ -1,0 +1,338 @@
+---
+title: "Persons"
+description: "Search and retrieve WCA competitor profiles, results, records, and competition history by WCA ID."
+---
+
+The WCA maintains two distinct concepts that are easy to confuse:
+
+- **Person** — a competitor record in the results database, identified by a WCA ID (e.g. `2019WANG36`). A Person is created when someone competes for the first time. It stores historical results, rankings, and nationality history. Every competitor who has ever competed at an official WCA competition has a Person record.
+- **User** — a WCA website account, identified by an internal numeric ID. A User can link to a Person by claiming their WCA ID. Not every Person has an associated User account.
+
+<Note>
+  Use the Persons API when you want to look up competition history, rankings, or results for a competitor by WCA ID — regardless of whether they have a website account. Use the [Users API](/api/users/me) when you are working with authenticated account data.
+</Note>
+
+The API enforces a **60 requests per minute** rate limit per IP address for external clients.
+
+---
+
+## List / search persons
+
+Returns a paginated list of persons. When `q` is provided, filters by name or WCA ID substring match. Without `q`, returns all current persons (sub_id = 1) — this is a large dataset; use pagination.
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/persons?q=Feliks+Zemdegs"
+```
+
+<ParamField query="q" type="string">
+  Search query. Matches against name and WCA ID. Each whitespace-separated token must appear in either field. Case-insensitive.
+</ParamField>
+
+<ParamField query="wca_ids" type="string">
+  Comma-separated list of WCA IDs to fetch in bulk (e.g. `2009ZEMD01,2019WANG36`). Can be combined with `q`.
+</ParamField>
+
+<ParamField query="page" type="integer">
+  Page number for pagination. Default page size is 20 results.
+</ParamField>
+
+### Response
+
+```json
+[
+  {
+    "person": {
+      "id": "2009ZEMD01",
+      "wca_id": "2009ZEMD01",
+      "name": "Feliks Zemdegs",
+      "url": "https://www.worldcubeassociation.org/persons/2009ZEMD01",
+      "country_iso2": "AU",
+      "gender": "m",
+      "delegate_status": null,
+      "teams": [],
+      "avatar": {
+        "url": "https://avatars.worldcubeassociation.org/...",
+        "thumb_url": "https://avatars.worldcubeassociation.org/...",
+        "is_default": false
+      }
+    },
+    "competition_count": 134,
+    "personal_records": {
+      "333": {
+        "single": {
+          "id": 1,
+          "person_id": "2009ZEMD01",
+          "event_id": "333",
+          "best": 490,
+          "world_rank": 42,
+          "continent_rank": 8,
+          "country_rank": 3
+        },
+        "average": {
+          "id": 1,
+          "person_id": "2009ZEMD01",
+          "event_id": "333",
+          "best": 622,
+          "world_rank": 60,
+          "continent_rank": 10,
+          "country_rank": 4
+        }
+      }
+    },
+    "medals": {
+      "gold": 31,
+      "silver": 19,
+      "bronze": 14,
+      "total": 64
+    },
+    "records": {
+      "national": 5,
+      "continental": 22,
+      "world": 18,
+      "total": 45
+    },
+    "total_solves": 3210
+  }
+]
+```
+
+Each element in the response array has the following structure:
+
+<ResponseField name="person" type="object" required>
+  The core person record.
+
+  <Expandable title="person fields">
+    <ResponseField name="id" type="string" required>
+      Identical to `wca_id`. Present for API consistency.
+    </ResponseField>
+    <ResponseField name="wca_id" type="string" required>
+      WCA competitor ID (format: `YYYYNAMEnn`).
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      Competitor's full name. May include a local-script name in parentheses (e.g. `Yiheng Wang (王艺衡)`).
+    </ResponseField>
+    <ResponseField name="url" type="string" required>
+      URL to the competitor's public WCA profile.
+    </ResponseField>
+    <ResponseField name="country_iso2" type="string" required>
+      ISO 3166-1 alpha-2 country code of the country the competitor currently represents.
+    </ResponseField>
+    <ResponseField name="gender" type="string">
+      `m`, `f`, or `o`. May be absent if not set.
+    </ResponseField>
+    <ResponseField name="delegate_status" type="string | null">
+      WCA delegate role if applicable; `null` otherwise.
+    </ResponseField>
+    <ResponseField name="teams" type="array">
+      WCA team/committee memberships.
+    </ResponseField>
+    <ResponseField name="avatar" type="object">
+      Profile picture URLs. `is_default` is `true` if using the placeholder avatar.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="competition_count" type="integer" required>
+  Total number of WCA competitions the person has attended.
+</ResponseField>
+
+<ResponseField name="personal_records" type="object" required>
+  Map keyed by event ID. Each value contains up to two keys — `single` and `average` — with rank objects. A person can have a single ranking without an average ranking (e.g. events where they only completed one solve), but never an average without a single.
+
+  <Expandable title="rank object fields">
+    <ResponseField name="best" type="integer">Best result in centiseconds (or event-specific units).</ResponseField>
+    <ResponseField name="world_rank" type="integer">Current world ranking.</ResponseField>
+    <ResponseField name="continent_rank" type="integer">Current continental ranking.</ResponseField>
+    <ResponseField name="country_rank" type="integer">Current national ranking.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="medals" type="object" required>
+  Podium finish counts across all competitions.
+
+  <Expandable title="medal fields">
+    <ResponseField name="gold" type="integer">First-place finishes.</ResponseField>
+    <ResponseField name="silver" type="integer">Second-place finishes.</ResponseField>
+    <ResponseField name="bronze" type="integer">Third-place finishes.</ResponseField>
+    <ResponseField name="total" type="integer">Total podium finishes.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="records" type="object" required>
+  Count of records set across the competitor's career.
+
+  <Expandable title="record fields">
+    <ResponseField name="national" type="integer">National records (NR).</ResponseField>
+    <ResponseField name="continental" type="integer">Continental records (e.g. AfR, AsR, NAR).</ResponseField>
+    <ResponseField name="world" type="integer">World records (WR).</ResponseField>
+    <ResponseField name="total" type="integer">Sum of all record types.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="total_solves" type="integer" required>
+  Total number of completed (non-DNF, non-DNS) solves across all competitions.
+</ResponseField>
+
+---
+
+## Get person by WCA ID
+
+Returns the full profile for a single competitor. Supports HTTP caching via `ETag` / `Last-Modified`.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/persons/2019WANG36
+```
+
+<ParamField path="wca_id" type="string" required>
+  A valid WCA competitor ID (e.g. `2019WANG36`).
+</ParamField>
+
+Returns `404` with `{ "error": "..." }` if the WCA ID does not exist or has no current record.
+
+<Note>
+  If you are requesting a person's own profile while authenticated as that person (or as a delegate), the response will also include the `dob` (date of birth) field inside the `person` object. Unauthenticated requests never include `dob`.
+</Note>
+
+---
+
+## Competition results for a person
+
+Returns every result the person has ever recorded at a WCA competition. Optionally filtered by event.
+
+```bash
+curl "https://www.worldcubeassociation.org/api/v0/persons/2019WANG36/results?event_id=333"
+```
+
+<ParamField path="wca_id" type="string" required>
+  WCA competitor ID.
+</ParamField>
+
+<ParamField query="event_id" type="string">
+  Filter results to a single event (e.g. `333`, `pyram`, `skewb`). Omit to return all events.
+</ParamField>
+
+### Response
+
+```json
+[
+  {
+    "id": 6709306,
+    "pos": 1,
+    "best": 337,
+    "average": 418,
+    "name": "Yiheng Wang (王艺衡)",
+    "country_iso2": "CN",
+    "competition_id": "HangzhouOpen2024",
+    "event_id": "333",
+    "round_type_id": "f",
+    "format_id": "a",
+    "wca_id": "2019WANG36",
+    "attempts": [337, 418, 441, 396, 0],
+    "best_index": 0,
+    "worst_index": 4,
+    "regional_single_record": "WR",
+    "regional_average_record": null
+  }
+]
+```
+
+Result times are in centiseconds. `0` in the `attempts` array indicates a DNS (did not start). `-1` indicates DNF (did not finish). For FMC, values are move counts. For MBLD, values use the WCA MBLD encoding.
+
+---
+
+## Records held by a person
+
+Returns all results in which the person set a national, continental, or world record. Both single and average records are included.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/persons/2019WANG36/records
+```
+
+<ParamField path="wca_id" type="string" required>
+  WCA competitor ID.
+</ParamField>
+
+### Response
+
+The response is a flat array of result objects (same schema as the `/results` endpoint above) where either `regional_single_record` or `regional_average_record` is non-null. Record codes are:
+
+| Code | Meaning |
+|------|---------|
+| `WR` | World Record |
+| `AsR`, `AfR`, `NAR`, `OcR`, `SAR`, `ER` | Continental Record (Asia, Africa, North America, Oceania, South America, Europe) |
+| `NR` | National Record |
+
+---
+
+## Competitions attended
+
+Returns the full list of competitions the person has attended (has at least one result in), with location and URL metadata.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/persons/2019WANG36/competitions
+```
+
+<ParamField path="wca_id" type="string" required>
+  WCA competitor ID.
+</ParamField>
+
+### Response
+
+```json
+[
+  {
+    "id": "HangzhouOpen2024",
+    "name": "Hangzhou Open 2024",
+    "short_name": "Hangzhou Open 2024",
+    "short_display_name": "Hangzhou Open 2024",
+    "url": "https://www.worldcubeassociation.org/competitions/HangzhouOpen2024",
+    "website": null,
+    "city": "Hangzhou, Zhejiang",
+    "venue_address": "...",
+    "venue_details": "...",
+    "latitude_degrees": 30.274,
+    "longitude_degrees": 120.155,
+    "country_iso2": "CN",
+    "time_until_registration": null
+  }
+]
+```
+
+---
+
+## Personal records (WCIF format)
+
+Returns the person's current personal bests in WCIF format. This is equivalent to the `personalBests` array in a WCIF `Person` object.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/persons/2019WANG36/personal_records
+```
+
+<ParamField path="wca_id" type="string" required>
+  WCA competitor ID.
+</ParamField>
+
+### Response
+
+```json
+[
+  {
+    "eventId": "333",
+    "best": 337,
+    "worldRanking": 1,
+    "continentRanking": 1,
+    "countryRanking": 1,
+    "type": "single"
+  },
+  {
+    "eventId": "333",
+    "best": 418,
+    "worldRanking": 2,
+    "continentRanking": 1,
+    "countryRanking": 1,
+    "type": "average"
+  }
+]
+```
+
+This endpoint returns a flat array covering both single and average records. The `type` field distinguishes them. Use this endpoint when you need WCIF-compatible data for integration with tools that consume the WCIF specification.

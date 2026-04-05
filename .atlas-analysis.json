@@ -1,0 +1,134 @@
+{
+  "projectType": "saas",
+  "projectName": "World Cube Association",
+  "projectDescription": "The official platform for the World Cube Association, managing speedcubing competitions, global rankings, competitor profiles, and community governance worldwide.",
+  "theme": "almond",
+  "primaryColor": "#d23228",
+  "lightColor": "#056499",
+  "darkColor": "#f5d959",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "contributing/quickstart",
+              "contributing/architecture"
+            ]
+          },
+          {
+            "group": "Competitions",
+            "pages": [
+              "competitions/overview",
+              "competitions/organizing",
+              "competitions/registration",
+              "competitions/results-submission"
+            ]
+          },
+          {
+            "group": "Users & Roles",
+            "pages": [
+              "users/accounts",
+              "users/roles-and-groups",
+              "users/delegates"
+            ]
+          },
+          {
+            "group": "Rankings & Results",
+            "pages": [
+              "results/rankings",
+              "results/records",
+              "results/data-export"
+            ]
+          },
+          {
+            "group": "Platform Features",
+            "pages": [
+              "platform/live-results",
+              "platform/payments",
+              "platform/notifications",
+              "platform/translations"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Competitions",
+            "pages": [
+              "api/competitions/list",
+              "api/competitions/detail",
+              "api/competitions/registrations",
+              "api/competitions/results"
+            ]
+          },
+          {
+            "group": "Users & Persons",
+            "pages": [
+              "api/users/me",
+              "api/users/persons"
+            ]
+          },
+          {
+            "group": "Results & Rankings",
+            "pages": [
+              "api/results/rankings",
+              "api/results/records"
+            ]
+          },
+          {
+            "group": "Data & Utilities",
+            "pages": [
+              "api/data/export",
+              "api/data/search"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Competition management with announcement, registration, and results workflow",
+    "Competitor registration with Stripe and PayPal payment integrations",
+    "Global rankings and world/continental/national records across all WCA events",
+    "OAuth 2.0 / OpenID Connect API for third-party integrations",
+    "Live results tracking during competitions",
+    "Delegate and organizer panel with role-based access control",
+    "WCIF (WCA Competition Interchange Format) support",
+    "Public data exports (SQL and TSV) updated regularly",
+    "Multi-language support with community-contributed translations",
+    "Automated background jobs: sanity checks, data dumps, mailing list syncs"
+  ],
+  "publicApiSurface": [
+    "GET /api/v0/competitions — list/search competitions",
+    "GET /api/v0/competitions/:id — competition details",
+    "GET /api/v0/competitions/:id/wcif/public — public WCIF data",
+    "GET /api/v0/competitions/:id/results — competition results",
+    "GET /api/v0/competitions/:id/registrations — competition registrations",
+    "GET /api/v0/competitions/:id/psych-sheet/:event_id — psych sheet",
+    "GET /api/v0/persons/:wca_id — competitor profile",
+    "GET /api/v0/persons/:wca_id/results — competitor results",
+    "GET /api/v0/persons/:wca_id/records — competitor records",
+    "GET /api/v0/results/rankings/:event_id/:type — global rankings",
+    "GET /api/v0/results/records — world/continental/national records",
+    "GET /api/v0/export/public — public database export info",
+    "GET /api/v0/search — omnisearch across competitions, persons, regulations",
+    "GET /api/v0/me — authenticated user profile (OAuth)",
+    "GET /api/v0/user_roles — user roles and groups",
+    "PATCH /api/v0/competitions/:id/wcif — update competition data (OAuth)",
+    "GET /api/v1/competitions/:id/registrations — v1 registrations",
+    "POST /api/v1/competitions/:id/registrations — create registration (OAuth)"
+  ]
+}

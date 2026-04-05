@@ -1,0 +1,122 @@
+---
+title: "Competition Payments"
+description: "Collect registration fees online using Stripe or PayPal, or configure manual payment for regions where online payment is not available."
+---
+
+The WCA platform supports collecting registration fees directly through the competition registration flow. Organizers connect a payment provider to their competition, and competitors pay when they register. Three payment integrations are available: **Stripe**, **PayPal**, and **Manual payment**.
+
+## Payment integrations
+
+<Tabs>
+  <Tab title="Stripe">
+    Stripe is the recommended payment integration for most regions. It uses Stripe Connect, meaning competitors pay directly into the organizer's Stripe account — the WCA never holds the funds.
+
+    The integration uses Stripe's **Payment Elements** workflow. When a competitor reaches the payment step during registration, the platform creates a `PaymentIntent` on Stripe with the competition fee amount, and the Stripe JS SDK renders the payment form. All major payment methods enabled on the organizer's Stripe account are available (cards, bank transfers, wallets, etc.).
+
+    After payment, Stripe redirects back to the WCA platform and the webhook confirms the final status. Refunds are issued through the organizer's Stripe dashboard or through the WCA admin panel, which calls `stripe_client.v1.refunds.create` with the charge ID and amount.
+
+    For supported currencies, see the [Stripe currency reference](https://docs.stripe.com/currencies#supportedcurrencies).
+  </Tab>
+  <Tab title="PayPal">
+    PayPal is available as an alternative for regions where Stripe is not supported. It uses PayPal's Orders API. When a competitor registers, the platform creates a PayPal Order via `PaypalInterface.create_order` and the PayPal JS SDK renders the payment flow.
+
+    Unlike Stripe, PayPal orders are not recycled — a new order is created for each payment attempt. The order ID is stored as the `client_secret` on the `PaymentIntent` record for later retrieval.
+
+    Refunds are issued by calling `PaypalInterface.issue_refund` with the merchant ID, capture ID, amount, and currency.
+
+    For supported currencies, see the [PayPal currency reference](https://developer.paypal.com/docs/reports/reference/paypal-supported-currencies/).
+  </Tab>
+  <Tab title="Manual Payment">
+    Manual payment is used when neither Stripe nor PayPal is available, or when the organizer prefers to collect fees in person or through a bank transfer. When manual payment is selected, competitors are shown payment instructions provided by the organizer, and the organizer manually marks registrations as paid in the admin interface.
+
+    No payment record is created in the WCA system for manual payments — tracking is entirely the organizer's responsibility.
+  </Tab>
+</Tabs>
+
+## Organizer setup
+
+<Steps>
+  <Step title="Open competition settings">
+    In the competition edit page, navigate to the **Payment** section. This is only available after the competition has been created and you have organizer or delegate access.
+  </Step>
+  <Step title="Choose a payment integration">
+    Select **Stripe**, **PayPal**, or **Manual** from the integration options. The available choices depend on what has been configured for your region. Only one payment integration can be active per competition.
+  </Step>
+  <Step title="Connect your account (Stripe)">
+    For Stripe, click **Connect with Stripe**. You will be redirected to Stripe's OAuth flow. After granting access, Stripe returns an authorization code which the platform exchanges for your Stripe account ID (`stripe_user_id`). This is stored as a `ConnectedStripeAccount` linked to your competition via `CompetitionPaymentIntegration`.
+
+    You can review connected applications at any time in your [Stripe dashboard](https://dashboard.stripe.com/account/applications).
+  </Step>
+  <Step title="Connect your account (PayPal)">
+    For PayPal, click **Connect with PayPal**. You will be redirected through PayPal's merchant onboarding flow. After completing it, PayPal returns your `merchantIdInPayPal` along with consent and permission status, which are stored as a `ConnectedPaypalAccount`.
+
+    You can review connected accounts in your [PayPal customer listing](https://www.paypal.com/listing/customers).
+  </Step>
+  <Step title="Set the registration fee">
+    Enter the registration fee amount and select the currency. The fee is stored against the competition and used when creating payment intents. Stripe amounts are converted to the smallest currency unit (e.g., cents) automatically. Make sure the currency you choose is supported by your selected payment provider.
+  </Step>
+  <Step title="Save and verify">
+    Save the competition settings. The payment integration is now live. Test it by visiting your competition's registration page. The payment form will appear during the registration flow for any competitor who registers after this point.
+  </Step>
+</Steps>
+
+## Competitor payment flow
+
+When a competitor submits their registration, the following sequence occurs:
+
+1. The registration is created with a pending status.
+2. When the competitor clicks **Pay**, the platform calls `prepare_intent` on the connected payment account. For Stripe, this creates or reuses an existing `PaymentIntent` on Stripe's API; for PayPal, it creates a new Order.
+3. A `PaymentIntent` record is created in the WCA database, storing the provider's intent/order ID, an encrypted `client_secret`, the initiating user, and the initial `wca_status` (typically `created`).
+4. The competitor completes payment using the provider's JS SDK (Stripe Elements or PayPal Buttons).
+5. On completion, the provider either redirects back to the WCA platform (Stripe) or calls our backend via the PayPal SDK callback.
+6. The platform retrieves the updated intent from the provider, updates the `PaymentIntent.wca_status`, and marks the registration as paid.
+
+### Payment intent statuses
+
+| Status | Meaning |
+|---|---|
+| `created` | Intent created; competitor has not started paying yet |
+| `pending` | Competitor is in the middle of the payment flow |
+| `requires_capture` | Competitor confirmed payment; funds awaiting capture |
+| `processing` | Provider is processing (e.g., bank transfer in flight) |
+| `partial` | Some funds received, remainder outstanding |
+| `failed` | Payment attempt failed; competitor can try again |
+| `succeeded` | Full amount confirmed received |
+| `canceled` | Payment canceled by competitor or provider |
+
+## Stripe webhooks
+
+Stripe sends webhook events to the WCA platform to notify it of payment state changes asynchronously. This is critical because some payment methods (bank transfers, certain redirects) do not complete synchronously.
+
+When Stripe fires a `payment_intent.succeeded` or similar event, the platform:
+
+1. Looks up the `StripeRecord` by the Stripe intent ID.
+2. Updates the raw record status via `update_status`.
+3. Calls `update_status_and_charges` on the associated `PaymentIntent`, which recomputes `wca_status`.
+4. If the intent transitions to `succeeded`, the platform retrieves the associated charges and marks the registration as paid.
+
+Webhook events are verified using the Stripe webhook signing secret before processing.
+
+## Issuing refunds
+
+Organizers can issue full or partial refunds from the competition admin panel.
+
+**For Stripe:** The platform calls `ConnectedStripeAccount#issue_refund` with the charge record and the refund amount in the competition's currency. This calls `stripe_client.v1.refunds.create` and stores the resulting `StripeRecord` as a child of the original charge record.
+
+**For PayPal:** The platform calls `PaypalInterface.issue_refund` with the merchant ID, capture ID, amount, and currency code. The resulting refund record is stored as a child `PaypalRecord` of the original capture.
+
+After a refund is issued, the organizer may also need to update the registration status manually depending on whether the competitor should remain registered.
+
+## Currency and denomination
+
+Registration fees are stored and transmitted in the **smallest unit** of the competition's currency (e.g., cents for USD, pence for GBP, yen for JPY — which has no minor unit). The platform uses `StripeRecord.amount_to_stripe` to convert the human-readable amount to the correct integer before sending it to Stripe.
+
+Currency support depends on the payment provider:
+
+- **Stripe:** Supports a wide range of currencies. Check [Stripe's supported currencies](https://docs.stripe.com/currencies#supportedcurrencies) before setting a fee.
+- **PayPal:** Supports a different set of currencies. Check [PayPal's supported currencies](https://developer.paypal.com/docs/reports/reference/paypal-supported-currencies/) before setting a fee.
+- **Manual:** No currency restriction — tracking is external.
+
+<Warning>
+  Setting a currency not supported by your payment provider will cause payment intent creation to fail. Always verify currency support before publishing your competition.
+</Warning>

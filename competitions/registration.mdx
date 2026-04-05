@@ -1,0 +1,188 @@
+---
+title: "Competition Registration"
+description: "How competitors register for WCA competitions, how organizers manage registrations, and how payments and waiting lists work."
+---
+
+Registration is the process by which competitors sign up to compete in a WCA competition. The WCA website handles registration directly for competitions that use `use_wca_registration`, or redirects competitors to an external page for those that manage registration separately.
+
+<Tabs>
+  <Tab title="Competitor perspective">
+    ## Finding open competitions
+
+    Visit the [WCA competitions list](https://www.worldcubeassociation.org/competitions) to browse upcoming events. You can filter by country, region, event, and date range. Competitions with open registration are clearly marked.
+
+    Each competition page shows:
+    - The registration open and close dates
+    - Whether registration is currently open, full, or not yet open
+    - A link to the psych sheet once registration has opened
+    - Entry fee information and payment options
+
+    ## Submitting your registration
+
+    When registration is open, you can register by visiting the competition's **Register** page. You must be logged into your WCA account to register.
+
+    On the registration form, select:
+    - The **events** you want to compete in (within any per-event limit the organizer has set)
+    - Whether you are bringing **guests** (if the competition allows it and has a guest limit)
+    - An optional **comment** to the organizers (required for some competitions)
+
+    Once submitted, your registration is in **pending** status. The organizer must accept it before you are confirmed to compete.
+
+    <Note>
+      If a competition requires a comment and you leave the comment field empty, your registration will be rejected. Check the competition's registration requirements before submitting.
+    </Note>
+
+    ## Paying the entry fee
+
+    If the competition charges an entry fee and uses a payment integration, you will see a payment form after submitting your registration (or when you return to the Register page). The form shows the total due based on your selected events and any optional donation.
+
+    Payment is processed through the connected provider — Stripe, PayPal, or manual payment. The exact amount is computed in the competition's currency at the lowest denomination (e.g., cents for EUR/USD) to avoid floating-point rounding.
+
+    <Note>
+      Paying the fee does not automatically accept your registration. The organizer still needs to approve you, unless the competition has auto-accept enabled for paid registrations.
+    </Note>
+
+    After payment completes, you are redirected back to the Register page. The page shows your current payment status.
+
+    ## Registration statuses
+
+    Your registration moves through the following states:
+
+    | Status | Meaning |
+    |---|---|
+    | **Pending** | Submitted, awaiting organizer review. |
+    | **Accepted** | The organizer has approved your registration. You are confirmed to compete. |
+    | **Waiting list** | The competition is full. You are in the queue and may be promoted if a spot opens. |
+    | **Cancelled** | You or the organizer has withdrawn your registration. |
+    | **Rejected** | The organizer explicitly rejected your registration. |
+
+    <Note>
+      Registrations in the WCIF export use simplified statuses: `accepted` (for accepted and non-competing), `deleted` (for cancelled or rejected), and `pending` (for pending or waiting list).
+    </Note>
+
+    ## Cancelling or editing your registration
+
+    Whether you can cancel or edit your registration depends on the competition's settings:
+
+    - **Cancellation policy**: The organizer can allow cancellations `always`, only for `not_accepted` registrations, or only for `unpaid` registrations.
+    - **Event edits**: Changes to your event selection are only allowed before the `event_change_deadline_date` (if one is set) and only before the competition starts.
+
+    If you have paid and cancel, your refund is subject to the competition's refund policy percentage and cutoff date.
+
+    ## Reading the psych sheet
+
+    The psych sheet lists all accepted competitors ranked by their current world ranking in a specific event. It gives you a sense of the competition level before the event.
+
+    - Navigate to **Registrations → Psych sheet** on the competition page.
+    - Select the event you want to view.
+    - You can sort by single ranking or average ranking.
+
+    If results have already been posted for the competition, the psych sheet is replaced by a results view.
+
+    ## Series registrations
+
+    If a competition is part of a competition series, you can only hold one **accepted** registration across all competitions in the series at any time. You may register for multiple, but only one can be accepted simultaneously. Attempting to accept a second will be blocked by the system.
+  </Tab>
+  <Tab title="Organizer perspective">
+    ## Managing registrations
+
+    Go to **Edit → Registrations** to view and manage all registrations for your competition. The registration list shows each competitor's name, WCA ID, selected events, payment status, registration date, and current status.
+
+    ### Approving and rejecting
+
+    To accept a registration, change its status from **pending** to **accepted**. The registration moves from the pending queue to the accepted list and the competitor is confirmed to compete.
+
+    To reject, set the status to **rejected** or **cancelled**. If the competition has a refund policy and the competitor has paid, you may need to issue a refund manually through the payment provider dashboard.
+
+    ### Bulk actions
+
+    You can select multiple registrations and apply actions in bulk:
+    - Accept all selected pending registrations
+    - Reject / cancel selected registrations
+    - Move selected registrations to the waiting list
+
+    Bulk acceptance is particularly useful when the competition first opens and you have a batch of pending registrations to review.
+
+    ### Auto-accept
+
+    Competitions with a Stripe integration can configure **auto-accept** to automatically move registrations from pending to accepted (or waiting list) as soon as payment is received:
+
+    - **Disabled** — no automatic acceptance; manual review only.
+    - **Bulk** — acceptance runs in a batch on demand via the admin panel.
+    - **Live** — acceptance triggers automatically whenever an existing accepted registration is cancelled, freeing a spot.
+
+    Auto-accept requires at least one Stripe payment integration. It will not run if the competitor's entry fees are still outstanding, if the auto-accept disable threshold has been reached, or if registration is not currently open.
+
+    ## Registration limits and waiting lists
+
+    If `competitor_limit_enabled` is set, the competition has a hard cap on accepted registrations. When the cap is reached:
+    - New registrations are automatically placed on the waiting list rather than set to pending.
+    - Existing pending registrations that have paid can be promoted from pending to the waiting list when the cap is already full.
+
+    The waiting list is an ordered queue. Position 1 is first in line. If an accepted registration is cancelled, the system can automatically promote the first person on the waiting list (when auto-accept live mode is enabled).
+
+    The **waiting list deadline** (`waiting_list_deadline_date`) is the date after which no further promotions from the waiting list occur. It must be after the registration close date and before or on the competition end date.
+
+    <Note>
+      Organizers can close registration early once the competition is full (accepted + paid pending count reaches the limit) using the **Close registration** action. This sets the registration close time to now and prevents new sign-ups.
+    </Note>
+
+    ## Importing registrations
+
+    For competitions that do **not** use WCA registration, you can import registrations from a CSV file. Go to **Registrations → Import** and upload a CSV with these required columns:
+
+    ```text
+    status, name, country, wca_id, birth_date, gender, email, [event_id columns]
+    ```
+
+    - `status`: use `a` to mark a row as accepted. Rows with any other status are skipped.
+    - `wca_id`: optional; leave blank for newcomers.
+    - `birth_date`: must be in `YYYY-MM-DD` format.
+    - Event columns: one column per competition event (e.g., `333`, `222`), with `1` for registered and `0` for not registered.
+
+    The import validates for:
+    - Missing required columns
+    - Duplicate email addresses or WCA IDs
+    - Invalid date of birth format
+    - Exceeding the competitor limit
+
+    If validation passes, all existing accepted registrations not in the CSV are cancelled, and all rows with `status = a` are accepted (or created if they don't exist yet).
+
+    ## Exporting registrations
+
+    Use **Registrations → Export** to download a CSV of accepted registrations, useful for generating name badges, scorecards, or check-in lists.
+
+    ## Adding on-the-spot registrations
+
+    If the competition has `on_the_spot_registration` enabled, you can add competitors at the venue using **Registrations → Add**. This bypasses the normal registration window and immediately creates an accepted registration.
+
+    On-the-spot registrations are blocked if:
+    - The competition is full
+    - Registration is not currently open and OTS is not enabled
+    - The competition is probably over (end date has passed)
+
+    ## Payment integrations
+
+    Competitions can connect to one or more payment providers through **Edit → Payment integration**:
+
+    | Provider | Notes |
+    |---|---|
+    | **Stripe** | Full OAuth flow. Supports automatic refunds and webhook-based payment confirmation. Requires a Stripe account connected via the WCA's Stripe platform. |
+    | **PayPal** | OAuth flow. Payment captured via the PayPal Orders API. Currently limited availability. |
+    | **Manual** | Organizers record payment outside the WCA system (e.g., bank transfer, cash). The account details are stored as free text and shown to competitors on the registration page. |
+
+    To connect Stripe, click **Connect Stripe** on the payment integration page. You are redirected through the Stripe OAuth flow. The competition ID is passed as the Stripe `state` parameter to route the callback correctly.
+
+    To disconnect a provider, use the **Disconnect** button. This removes the integration from the competition. Existing payments already recorded are not affected.
+
+    <Note>
+      If a competition has a paid entry fee configured but no payment integration connected, the system will warn you on the edit page. Competitors will see no payment option until an integration is connected.
+    </Note>
+
+    ## Issuing refunds
+
+    To refund a payment, navigate to the competitor's registration, find the payment record, and enter the refund amount. Partial refunds are supported. The refund is issued through the payment provider's API and recorded in the WCA system. The refund amount cannot exceed the original charge amount.
+
+    The competition's refund policy percentage and cutoff date are shown to competitors at registration time, but the system does not automatically enforce them — organizers decide when to approve a refund.
+  </Tab>
+</Tabs>

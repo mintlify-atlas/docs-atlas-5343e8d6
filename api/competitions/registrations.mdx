@@ -1,0 +1,502 @@
+---
+title: "Competition Registrations API"
+description: "List, create, and update competition registrations. Covers both the v0 public listing and the v1 registration management API."
+---
+
+The WCA exposes two API versions for competition registrations:
+
+- **API v0** — read-only, public listing of accepted registrations for a competition.
+- **API v1** — full lifecycle management: create, read, and update registrations. Required for registration systems and competition management tools.
+
+---
+
+## List accepted registrations (v0)
+
+```
+GET /api/v0/competitions/:id/registrations
+```
+
+Returns all **accepted** registrations for a competition. This is the public-facing endpoint and only shows competitors whose registration status is `accepted`.
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+### Response
+
+Returns an array of registration objects. Each object includes:
+
+<ResponseField name="id" type="integer" required>
+  Registration record ID.
+</ResponseField>
+
+<ResponseField name="competition_id" type="string" required>
+  Parent competition ID.
+</ResponseField>
+
+<ResponseField name="user_id" type="integer" required>
+  WCA user ID of the registrant.
+</ResponseField>
+
+<ResponseField name="event_ids" type="string[]" required>
+  Array of WCIF event IDs the competitor has registered for.
+</ResponseField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/registrations"
+```
+
+```json Response
+[
+  {
+    "id": 55001,
+    "competition_id": "WC2025",
+    "user_id": 12345,
+    "event_ids": ["333", "222", "444"]
+  },
+  {
+    "id": 55002,
+    "competition_id": "WC2025",
+    "user_id": 67890,
+    "event_ids": ["333", "pyram", "skewb"]
+  }
+]
+```
+
+---
+
+## List accepted registrations (v1)
+
+```
+GET /api/v1/competitions/:id/registrations
+```
+
+Returns all accepted, competing registrations for a competition in the richer v2 JSON format. Includes user profile data alongside event and status information. Results are cached and invalidated when any registration or user record changes.
+
+**Authentication:** Public. Additional fields (`registration_status`, `comment`, `admin_comment`, payment info) are included when the request is authenticated as a competition manager.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+### Response fields
+
+<ResponseField name="id" type="integer" required>
+  Registration record ID.
+</ResponseField>
+
+<ResponseField name="registrant_id" type="integer" required>
+  Sequential registrant number within the competition (assigned in registration order, starting at 1).
+</ResponseField>
+
+<ResponseField name="user_id" type="integer" required>
+  WCA user ID.
+</ResponseField>
+
+<ResponseField name="guests" type="integer">
+  Number of guests the competitor will bring.
+</ResponseField>
+
+<ResponseField name="user" type="object" required>
+  Basic user profile.
+  <Expandable title="user properties">
+    <ResponseField name="id" type="integer" required>
+      User ID.
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      Display name.
+    </ResponseField>
+    <ResponseField name="gender" type="string" required>
+      Gender code (e.g. `"m"`, `"f"`, `"o"`).
+    </ResponseField>
+    <ResponseField name="country_iso2" type="string" required>
+      Two-letter country code.
+    </ResponseField>
+    <ResponseField name="wca_id" type="string" required>
+      The competitor's WCA ID, or `null` for newcomers.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="competing" type="object" required>
+  Competition-specific registration data.
+  <Expandable title="competing properties">
+    <ResponseField name="event_ids" type="string[]" required>
+      Events registered for.
+    </ResponseField>
+    <ResponseField name="registration_status" type="string">
+      Current registration status. Only present when authenticated. One of: `pending`, `accepted`, `cancelled`, `rejected`, `waiting_list`.
+    </ResponseField>
+    <ResponseField name="registered_on" type="string">
+      ISO 8601 datetime of initial registration. Only present when authenticated.
+    </ResponseField>
+    <ResponseField name="comment" type="string">
+      Competitor's registration comment. Only present when authenticated.
+    </ResponseField>
+    <ResponseField name="admin_comment" type="string">
+      Organizer-only internal comment. Only present for competition managers.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="payment" type="object">
+  Payment status. Only present when authenticated as a competition manager.
+  <Expandable title="payment properties">
+    <ResponseField name="has_paid" type="boolean">
+      Whether the competitor has paid the entry fee.
+    </ResponseField>
+    <ResponseField name="payment_status" type="string">
+      Payment status string.
+    </ResponseField>
+    <ResponseField name="paid_amount_iso" type="integer">
+      Amount paid in the currency's smallest denomination.
+    </ResponseField>
+    <ResponseField name="currency_code" type="string">
+      ISO 4217 currency code.
+    </ResponseField>
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 datetime of the last payment update.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v1/competitions/WC2025/registrations"
+```
+
+```json Response
+[
+  {
+    "id": 55001,
+    "registrant_id": 1,
+    "user_id": 12345,
+    "guests": 2,
+    "user": {
+      "id": 12345,
+      "name": "Max Speedcuber",
+      "gender": "m",
+      "country_iso2": "US",
+      "wca_id": "2020SPEE01"
+    },
+    "competing": {
+      "event_ids": ["333", "222", "444"]
+    }
+  }
+]
+```
+
+---
+
+## Create registration
+
+```
+POST /api/v1/competitions/:id/registrations
+```
+
+Submits a new registration for the authenticated user. Registration creation is asynchronous — the endpoint enqueues a background job and returns `202 Accepted` immediately.
+
+**Authentication:** Required. Users may only create registrations for themselves.
+
+<Warning>
+  Registration is only permitted while the competition's registration window is open (`registration_open` ≤ now ≤ `registration_close`). Organizers and delegates may register outside this window.
+</Warning>
+
+<ParamField path="id" type="string" required>
+  Competition ID. Also referred to as `competition_id` in the request body.
+</ParamField>
+
+### Request body
+
+<ParamField body="competition_id" type="string" required>
+  The competition ID to register for.
+</ParamField>
+
+<ParamField body="user_id" type="integer" required>
+  The WCA user ID of the registrant. Must match the authenticated user's ID.
+</ParamField>
+
+<ParamField body="competing" type="object" required>
+  Competing lane data.
+  <Expandable title="competing fields">
+    <ParamField body="competing.event_ids" type="string[]" required>
+      Array of event IDs to register for. Must be a subset of the competition's `event_ids`.
+    </ParamField>
+    <ParamField body="competing.comment" type="string">
+      Optional registration comment. Maximum 240 characters.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="guests" type="integer">
+  Number of guests. Must be within the competition's guest limit (if set). Defaults to `0`.
+</ParamField>
+
+### Response
+
+```json 202 Accepted
+{
+  "status": "accepted",
+  "message": "Started Registration Process"
+}
+```
+
+### Error responses
+
+| HTTP Status | Condition |
+|-------------|-----------|
+| `400 Bad Request` | Missing required lane (`competing`) or invalid request data. |
+| `401 Unauthorized` | Not authenticated, or attempting to register on behalf of another user. |
+| `403 Forbidden` | Registration is closed, competitor is banned, profile is incomplete, or already registered in the same competition series. |
+| `422 Unprocessable Entity` | Registration already exists for this user + competition pair. |
+
+```bash cURL
+curl -X POST \
+  "https://www.worldcubeassociation.org/api/v1/competitions/BerlinAutumn2025/registrations" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "competition_id": "BerlinAutumn2025",
+    "user_id": 12345,
+    "competing": {
+      "event_ids": ["333", "222", "pyram"],
+      "comment": "Looking forward to competing!"
+    },
+    "guests": 1
+  }'
+```
+
+---
+
+## Get single registration
+
+```
+GET /api/v1/registrations/:id
+```
+
+Returns full details for a single registration by its numeric ID, including status and admin fields.
+
+**Authentication:** Required. The authenticated user must either be the registrant or a manager of the competition.
+
+<ParamField path="id" type="integer" required>
+  Registration record ID.
+</ParamField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v1/registrations/55001" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+```json Response
+{
+  "id": 55001,
+  "registrant_id": 1,
+  "user_id": 12345,
+  "guests": 1,
+  "user": {
+    "id": 12345,
+    "name": "Max Speedcuber",
+    "gender": "m",
+    "country_iso2": "US",
+    "wca_id": "2020SPEE01"
+  },
+  "competing": {
+    "event_ids": ["333", "222", "pyram"],
+    "registration_status": "accepted",
+    "registered_on": "2025-01-05T10:32:00.000Z",
+    "comment": "Looking forward to competing!",
+    "admin_comment": ""
+  },
+  "payment": {
+    "has_paid": true,
+    "payment_status": "succeeded",
+    "paid_amount_iso": 2500,
+    "currency_code": "USD",
+    "updated_at": "2025-01-06T08:15:00.000Z"
+  }
+}
+```
+
+---
+
+## Update registration
+
+```
+PATCH /api/v1/registrations/:id
+```
+
+Updates an existing registration. What a user can update depends on their role:
+
+- **Competitors** may update their event list and comment while registration edits are open. They may cancel their own registration (if permitted by the competition's cancellation policy) or reactivate a previously cancelled registration.
+- **Organizers and delegates** may change status, update admin comments, and modify waiting list positions regardless of edit windows.
+
+**Authentication:** Required.
+
+<ParamField path="id" type="integer" required>
+  Registration record ID.
+</ParamField>
+
+### Request body
+
+<ParamField body="competing" type="object" required>
+  At least one competing field must be provided.
+  <Expandable title="competing fields">
+    <ParamField body="competing.status" type="string">
+      New registration status. Competitors may set this to `cancelled` (to cancel) or `pending` (to reactivate from cancelled). Organizers may set any valid status value.
+
+      Valid values: `pending`, `accepted`, `cancelled`, `rejected`, `waiting_list`.
+    </ParamField>
+    <ParamField body="competing.event_ids" type="string[]">
+      Updated list of registered event IDs. Replaces the existing list.
+    </ParamField>
+    <ParamField body="competing.comment" type="string">
+      Updated registration comment. Maximum 240 characters.
+    </ParamField>
+    <ParamField body="competing.admin_comment" type="string">
+      Organizer-only internal note. Requires competition management permissions.
+    </ParamField>
+    <ParamField body="competing.waiting_list_position" type="integer">
+      Target waiting list position. Requires competition management permissions.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="guests" type="integer">
+  Updated guest count.
+</ParamField>
+
+### Success response
+
+```json 200 OK
+{
+  "status": "ok",
+  "registration": { ... }
+}
+```
+
+The `registration` field contains the full updated registration object in v2 JSON format (same schema as the `GET` response).
+
+### Error responses
+
+| HTTP Status | Condition |
+|-------------|-----------|
+| `401 Unauthorized` | Not authenticated, or attempting to modify another user's registration without management permissions. |
+| `403 Forbidden` | Registration edits are closed, registration is rejected, or attempting to set admin-only fields without management permissions. |
+| `404 Not Found` | Registration does not exist. |
+
+```bash cURL
+# Competitor cancelling their own registration
+curl -X PATCH \
+  "https://www.worldcubeassociation.org/api/v1/registrations/55001" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "competing": {
+      "status": "cancelled"
+    }
+  }'
+```
+
+```bash cURL (organizer accepting a registration)
+curl -X PATCH \
+  "https://www.worldcubeassociation.org/api/v1/registrations/55002" \
+  -H "Authorization: Bearer ORGANIZER_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "competing": {
+      "status": "accepted",
+      "admin_comment": "Verified payment received offline."
+    }
+  }'
+```
+
+---
+
+## Registration status values
+
+Registrations progress through the following statuses:
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Registration submitted, awaiting organizer review. |
+| `accepted` | Organizer has accepted the competitor. They appear in the competitor list. |
+| `waiting_list` | Competition is full; competitor is on the waiting list. |
+| `cancelled` | Competitor cancelled their own registration or was cancelled by an organizer. |
+| `rejected` | Organizer rejected the registration. The competitor cannot re-register. |
+
+<Note>
+  The v0 endpoint (`GET /api/v0/competitions/:id/registrations`) only returns registrations with `accepted` status. The v1 endpoints return all statuses to authenticated managers.
+</Note>
+
+---
+
+## Get registration configuration
+
+```
+GET /api/v1/competitions/:id/registration_config
+```
+
+Returns the registration configuration lanes for a competition. The configuration describes which steps are required in the registration flow and their parameters. This is used by registration UIs to determine what to show the user.
+
+**Authentication:** Required.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+### Response
+
+Returns an array of registration lane configuration objects. Each object has a `key` discriminator field:
+
+| `key` | Description |
+|-------|-------------|
+| `requirements` | Any special requirements the registrant must acknowledge. |
+| `competing` | Parameters for the competing lane (events, qualifications, guest limits). |
+| `payment` | Payment configuration (Stripe keys, connected account). |
+| `approval` | Auto-accept settings. |
+
+Each object also includes `isEditable` (whether the organizer has configured this lane) and a `parameters` object with lane-specific fields.
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v1/competitions/WC2025/registration_config" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+```json Response
+[
+  {
+    "key": "competing",
+    "isEditable": true,
+    "parameters": {
+      "event_ids": ["333", "222", "444", "pyram", "skewb"],
+      "allow_registration_edits": true,
+      "guest_entry_status": "free",
+      "guests_enabled": true,
+      "guests_per_registration_limit": 3,
+      "uses_qualification?": false,
+      "allow_registration_without_qualification": true,
+      "force_comment_in_registration": false,
+      "qualification_wcif": {},
+      "preferredEvents": [],
+      "personalRecords": { "single": [], "average": [] }
+    }
+  },
+  {
+    "key": "payment",
+    "isEditable": true,
+    "parameters": {
+      "stripePublishableKey": "pk_live_...",
+      "connectedAccountId": "acct_..."
+    }
+  },
+  {
+    "key": "approval",
+    "isEditable": false,
+    "parameters": {
+      "auto_accept_enabled?": false,
+      "auto_accept_preference": "disabled"
+    }
+  }
+]
+```

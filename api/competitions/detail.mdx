@@ -1,0 +1,657 @@
+---
+title: "Competition Details"
+description: "Fetch full competition information, WCIF data, events, schedule, tabs, podiums, and scrambles for a specific competition."
+---
+
+These endpoints provide detailed data for a single competition identified by its unique string ID (e.g. `WC2025`, `BerlinAutumn2024`).
+
+---
+
+## Get competition info
+
+```
+GET /api/v0/competitions/:id
+```
+
+Returns the complete competition information object for public consumption. This is the same payload returned by the [List Competitions](/api/competitions/list) endpoint for a single item, with all fields populated.
+
+**Authentication:** Public. Competitions that have not yet been publicly announced are hidden unless the requester is a manager of that competition.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The competition's unique string ID (e.g. `WC2025`, `BerlinAutumn2024`).
+</ParamField>
+
+### Response fields
+
+<ResponseField name="id" type="string" required>
+  Unique competition identifier.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Full display name (e.g. `"WCA World Championship 2025"`).
+</ResponseField>
+
+<ResponseField name="information" type="string" required>
+  Markdown-formatted information text displayed on the competition page.
+</ResponseField>
+
+<ResponseField name="venue" type="string" required>
+  Venue name, supporting WCA inline link syntax.
+</ResponseField>
+
+<ResponseField name="venue_address" type="string">
+  Street address of the venue.
+</ResponseField>
+
+<ResponseField name="venue_details" type="string">
+  Additional venue detail (e.g. building name, room number).
+</ResponseField>
+
+<ResponseField name="contact" type="string">
+  Contact URL or email link for the competition organizers.
+</ResponseField>
+
+<ResponseField name="city" type="string" required>
+  City where the competition takes place.
+</ResponseField>
+
+<ResponseField name="country_iso2" type="string" required>
+  Two-letter ISO 3166-1 alpha-2 country code.
+</ResponseField>
+
+<ResponseField name="latitude_degrees" type="number" required>
+  Venue latitude.
+</ResponseField>
+
+<ResponseField name="longitude_degrees" type="number" required>
+  Venue longitude.
+</ResponseField>
+
+<ResponseField name="start_date" type="string" required>
+  Start date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="end_date" type="string" required>
+  End date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="registration_open" type="string" required>
+  ISO 8601 datetime when registration opens.
+</ResponseField>
+
+<ResponseField name="registration_close" type="string" required>
+  ISO 8601 datetime when registration closes.
+</ResponseField>
+
+<ResponseField name="announced_at" type="string" required>
+  ISO 8601 datetime when the competition was publicly announced.
+</ResponseField>
+
+<ResponseField name="cancelled_at" type="string">
+  ISO 8601 datetime if the competition was cancelled, otherwise `null`.
+</ResponseField>
+
+<ResponseField name="event_ids" type="string[]" required>
+  Array of WCIF event IDs.
+</ResponseField>
+
+<ResponseField name="main_event_id" type="string" required>
+  The primary event for this competition.
+</ResponseField>
+
+<ResponseField name="use_wca_registration" type="boolean" required>
+  `true` if the competition uses the WCA's own registration system.
+</ResponseField>
+
+<ResponseField name="external_registration_page" type="string">
+  URL of an external registration page when `use_wca_registration` is `false`.
+</ResponseField>
+
+<ResponseField name="base_entry_fee_lowest_denomination" type="integer" required>
+  Entry fee in the currency's smallest denomination (e.g. cents for USD).
+</ResponseField>
+
+<ResponseField name="currency_code" type="string" required>
+  ISO 4217 currency code (e.g. `"USD"`, `"EUR"`).
+</ResponseField>
+
+<ResponseField name="competitor_limit" type="integer" required>
+  Maximum number of accepted competitors. `null` if no limit is set.
+</ResponseField>
+
+<ResponseField name="guests_enabled" type="boolean" required>
+  Whether guest spectators are permitted.
+</ResponseField>
+
+<ResponseField name="qualification_results" type="boolean" required>
+  `true` if this competition requires qualification results to register.
+</ResponseField>
+
+<ResponseField name="uses_qualification" type="boolean">
+  Whether any event at this competition has qualification requirements.
+</ResponseField>
+
+<ResponseField name="uses_cutoff" type="boolean">
+  Whether any round at this competition uses a combined cutoff format.
+</ResponseField>
+
+<ResponseField name="refund_policy_percent" type="integer" required>
+  Percentage of entry fee refunded if a competitor cancels before `refund_policy_limit_date`.
+</ResponseField>
+
+<ResponseField name="refund_policy_limit_date" type="string" required>
+  ISO 8601 datetime after which no refunds are issued.
+</ResponseField>
+
+<ResponseField name="waiting_list_deadline_date" type="string" required>
+  ISO 8601 deadline for organizers to promote competitors from the waiting list.
+</ResponseField>
+
+<ResponseField name="event_change_deadline_date" type="string" required>
+  ISO 8601 deadline after which competitors may no longer change their registered events.
+</ResponseField>
+
+<ResponseField name="allow_registration_edits" type="boolean">
+  Whether competitors may edit their registrations after submission.
+</ResponseField>
+
+<ResponseField name="competitor_can_cancel" type="string" required>
+  Cancellation policy. One of `"not_accepted"` (only non-accepted registrations can be cancelled), `"always"`, or `"unpaid"`.
+</ResponseField>
+
+<ResponseField name="on_the_spot_registration" type="boolean" required>
+  Whether on-the-spot registration is permitted.
+</ResponseField>
+
+<ResponseField name="registration_full?" type="boolean" required>
+  `true` if the competitor limit has been reached.
+</ResponseField>
+
+<ResponseField name="registration_full_and_accepted?" type="boolean" required>
+  `true` if the competitor limit has been reached and all spots are accepted (no waiting list).
+</ResponseField>
+
+<ResponseField name="part_of_competition_series?" type="boolean" required>
+  `true` if this competition is part of a competition series.
+</ResponseField>
+
+<ResponseField name="competition_series_ids" type="string[]" required>
+  IDs of other competitions in the same series, if applicable.
+</ResponseField>
+
+<ResponseField name="number_of_bookmarks" type="integer" required>
+  How many users have bookmarked this competition.
+</ResponseField>
+
+<ResponseField name="url" type="string" required>
+  Canonical WCA URL for this competition.
+</ResponseField>
+
+<ResponseField name="website" type="string">
+  External competition website, if provided.
+</ResponseField>
+
+<ResponseField name="short_name" type="string" required>
+  Short/abbreviated name.
+</ResponseField>
+
+<ResponseField name="tab_names" type="string[]" required>
+  Ordered list of custom tab names shown on the competition page.
+</ResponseField>
+
+<ResponseField name="delegates" type="object[]" required>
+  Delegate user objects.
+</ResponseField>
+
+<ResponseField name="organizers" type="object[]" required>
+  Organizer user objects.
+</ResponseField>
+
+### Example
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2003"
+```
+
+```json Response
+{
+  "id": "WC2003",
+  "name": "WCA World Championship 2003",
+  "information": "First WCA World Championship",
+  "venue": "Toronto",
+  "venue_address": "770 Don Mills Rd, North York, ON M3C IT3, Canada",
+  "city": "Toronto, Ontario",
+  "country_iso2": "CA",
+  "latitude_degrees": 43.7152,
+  "longitude_degrees": -79.3308,
+  "start_date": "2003-08-23",
+  "end_date": "2003-08-24",
+  "registration_open": null,
+  "registration_close": null,
+  "announced_at": "2003-05-01T00:00:00.000Z",
+  "cancelled_at": null,
+  "event_ids": ["333", "444", "333bf", "333oh", "magic"],
+  "main_event_id": "333",
+  "use_wca_registration": false,
+  "base_entry_fee_lowest_denomination": 0,
+  "currency_code": "USD",
+  "competitor_limit": null,
+  "guests_enabled": false,
+  "qualification_results": false,
+  "refund_policy_percent": 0,
+  "url": "https://www.worldcubeassociation.org/competitions/WC2003",
+  "delegates": [],
+  "organizers": []
+}
+```
+
+---
+
+## Get public WCIF
+
+```
+GET /api/v0/competitions/:id/wcif/public
+```
+
+Returns the full [WCIF (WCA Competition Interchange Format)](https://github.com/thewca/wcif) document for a competition. WCIF is the standard JSON format used to describe all aspects of a WCA competition including events, rounds, schedules, persons, and results.
+
+The response is cached for up to 5 minutes.
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/wcif/public"
+```
+
+```json Response (structure)
+{
+  "formatVersion": "1.0",
+  "id": "WC2025",
+  "name": "WCA World Championship 2025",
+  "shortName": "WC2025",
+  "persons": [...],
+  "events": [...],
+  "schedule": { "venues": [...] },
+  "competitorLimit": 2000,
+  "extensions": []
+}
+```
+
+<Note>
+  The full WCIF document can be large for major competitions. Consider fetching specific sub-resources (events, schedule) if you only need part of the data.
+</Note>
+
+---
+
+## Get competition events
+
+```
+GET /api/v0/competitions/:id/events
+```
+
+Returns the events for a competition in WCIF format. Each event includes its rounds with their formats, time limits, cutoffs, and advancement conditions.
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/events"
+```
+
+```json Response
+[
+  {
+    "id": "333",
+    "rounds": [
+      {
+        "id": "333-r1",
+        "format": "a",
+        "timeLimit": { "centiseconds": 60000, "cumulativeRoundIds": [] },
+        "cutoff": { "numberOfAttempts": 2, "attemptResult": 2000 },
+        "advancementCondition": { "type": "ranking", "level": 100 },
+        "scrambleSetCount": 5,
+        "results": []
+      }
+    ]
+  }
+]
+```
+
+---
+
+## Get competition schedule
+
+```
+GET /api/v0/competitions/:id/schedule
+```
+
+Returns the competition schedule in WCIF format, describing venues, rooms, and activities across all competition days.
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/schedule"
+```
+
+```json Response (structure)
+{
+  "startDate": "2025-07-03",
+  "numberOfDays": 4,
+  "venues": [
+    {
+      "id": 1,
+      "name": "Seattle Convention Center",
+      "countryIso2": "US",
+      "timezone": "America/Los_Angeles",
+      "rooms": [
+        {
+          "id": 1,
+          "name": "Main Hall",
+          "color": "#00BCD4",
+          "activities": [
+            {
+              "id": 1,
+              "name": "3x3x3 Cube - Round 1",
+              "activityCode": "333-r1",
+              "startTime": "2025-07-03T09:00:00Z",
+              "endTime": "2025-07-03T12:00:00Z",
+              "childActivities": [],
+              "extensions": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Get competition tabs
+
+```
+GET /api/v0/competitions/:id/tabs
+```
+
+Returns the ordered list of custom informational tabs for the competition page. Each tab has a name and Markdown-rendered content.
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+### Response fields
+
+<ResponseField name="id" type="string" required>
+  Tab identifier.
+</ResponseField>
+
+<ResponseField name="competition_id" type="string" required>
+  ID of the parent competition.
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Display name for the tab.
+</ResponseField>
+
+<ResponseField name="content" type="string" required>
+  Markdown content of the tab.
+</ResponseField>
+
+<ResponseField name="display_order" type="integer" required>
+  Zero-based ordering position among all tabs.
+</ResponseField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/tabs"
+```
+
+```json Response
+[
+  {
+    "id": "12",
+    "competition_id": "WC2025",
+    "name": "Travel & Accommodation",
+    "content": "## Hotels\n\nThe following hotels are within walking distance...",
+    "display_order": 0
+  },
+  {
+    "id": "13",
+    "competition_id": "WC2025",
+    "name": "Schedule",
+    "content": "## Day 1\n\n...",
+    "display_order": 1
+  }
+]
+```
+
+---
+
+## Get competition podiums
+
+```
+GET /api/v0/competitions/:id/podiums
+```
+
+Returns the top-3 results (podium placements) for every event at the competition.
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+### Response fields
+
+Each element in the array is a result object:
+
+<ResponseField name="id" type="integer" required>
+  Result record ID.
+</ResponseField>
+
+<ResponseField name="pos" type="integer" required>
+  Final position (1, 2, or 3 for podium results).
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Competitor's name.
+</ResponseField>
+
+<ResponseField name="wca_id" type="string" required>
+  Competitor's WCA ID.
+</ResponseField>
+
+<ResponseField name="country_iso2" type="string" required>
+  Competitor's country.
+</ResponseField>
+
+<ResponseField name="event_id" type="string" required>
+  Event ID.
+</ResponseField>
+
+<ResponseField name="round_type_id" type="string" required>
+  Round type identifier. `"f"` for final, `"c"` for combined final, etc.
+</ResponseField>
+
+<ResponseField name="best" type="integer" required>
+  Best single result in centiseconds (or move count for FMC, or attempt count for MBLD).
+</ResponseField>
+
+<ResponseField name="average" type="integer" required>
+  Average result in centiseconds. `-1` indicates a DNF average.
+</ResponseField>
+
+<ResponseField name="attempts" type="integer[]" required>
+  Array of individual attempt results.
+</ResponseField>
+
+<ResponseField name="regional_single_record" type="string">
+  Record designation for best single, if applicable (e.g. `"WR"`, `"CR"`, `"NR"`). `null` otherwise.
+</ResponseField>
+
+<ResponseField name="regional_average_record" type="string">
+  Record designation for average, if applicable. `null` otherwise.
+</ResponseField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/podiums"
+```
+
+```json Response (excerpt)
+[
+  {
+    "id": 998001,
+    "pos": 1,
+    "name": "Max Speedcuber",
+    "wca_id": "2020SPEE01",
+    "country_iso2": "US",
+    "competition_id": "WC2025",
+    "event_id": "333",
+    "round_type_id": "f",
+    "format_id": "a",
+    "best": 412,
+    "average": 531,
+    "attempts": [412, 538, 549, 560, 507],
+    "best_index": 0,
+    "worst_index": 3,
+    "regional_single_record": "WR",
+    "regional_average_record": null
+  }
+]
+```
+
+---
+
+## Get competition scrambles
+
+```
+GET /api/v0/competitions/:id/scrambles
+```
+
+Returns all scrambles for a competition. Scrambles are only available after the competition has concluded.
+
+**Authentication:** Public.
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+### Response fields
+
+<ResponseField name="id" type="number" required>
+  Scramble record ID.
+</ResponseField>
+
+<ResponseField name="competition_id" type="string" required>
+  Parent competition ID.
+</ResponseField>
+
+<ResponseField name="event_id" type="string" required>
+  Event ID (e.g. `"333"`, `"pyram"`).
+</ResponseField>
+
+<ResponseField name="round_type_id" type="string" required>
+  Round type identifier.
+</ResponseField>
+
+<ResponseField name="round_id" type="number" required>
+  Internal round record ID.
+</ResponseField>
+
+<ResponseField name="group_id" type="string" required>
+  Scramble group label (e.g. `"A"`, `"B"`).
+</ResponseField>
+
+<ResponseField name="is_extra" type="string" required>
+  `"1"` if this is an extra (replacement) scramble, `"0"` otherwise.
+</ResponseField>
+
+<ResponseField name="scramble_num" type="number" required>
+  Position of this scramble within its group (1-indexed).
+</ResponseField>
+
+<ResponseField name="scramble" type="string" required>
+  The scramble string in standard WCA notation (e.g. `"R U R' U' R' F R2 U' R' U' R U R' F'"`).
+</ResponseField>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/scrambles"
+```
+
+```json Response (excerpt)
+[
+  {
+    "id": 1234,
+    "competition_id": "WC2025",
+    "event_id": "333",
+    "round_type_id": "1",
+    "round_id": 10,
+    "group_id": "A",
+    "is_extra": "0",
+    "scramble_num": 1,
+    "scramble": "R U R' U' R' F R2 U' R' U' R U R' F'"
+  }
+]
+```
+
+---
+
+## Update WCIF (authenticated)
+
+```
+PATCH /api/v0/competitions/:id/wcif
+```
+
+Replaces the competition's WCIF document. This endpoint is used by competition management tools to update event configurations, schedules, and related data.
+
+**Authentication:** Required. The authenticated user must be a delegate or organizer of the competition (`manage_competitions` OAuth scope). After results are submitted, only users with admin competition permissions may update the WCIF.
+
+<Warning>
+  This endpoint performs a full WCIF update. Partial updates are not supported — always send the complete WCIF document. Sending an incomplete payload may remove data.
+</Warning>
+
+<ParamField path="id" type="string" required>
+  Competition ID.
+</ParamField>
+
+The request body is a complete WCIF JSON document.
+
+### Success response
+
+```json
+{
+  "status": "Successfully saved WCIF"
+}
+```
+
+### Error responses
+
+| Status | Description |
+|--------|-------------|
+| `400 Bad Request` | WCIF failed validation (schema or record validation error). Response includes an `error` field. |
+| `401 Unauthorized` | Not authenticated. |
+| `403 Forbidden` | Authenticated but not a manager of this competition, or results have been submitted and user lacks admin permissions. |
+| `404 Not Found` | Competition does not exist or is not visible. |
+
+```bash cURL
+curl -X PATCH \
+  "https://www.worldcubeassociation.org/api/v0/competitions/WC2025/wcif" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @wcif.json
+```

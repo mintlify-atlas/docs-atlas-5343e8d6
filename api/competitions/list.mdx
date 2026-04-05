@@ -1,0 +1,284 @@
+---
+title: "List Competitions"
+description: "Retrieve a paginated list of WCA competitions. Supports filtering by date range, country, events, and text search."
+---
+
+The WCA API exposes two endpoints for listing competitions:
+
+- **`GET /api/v0/competitions`** — the standard search endpoint, suitable for most integrations.
+- **`GET /api/v0/competition_index`** — a lighter-weight listing optimised for table/grid display, with extra fields like `short_display_name`, `championship_types`, and geographic coordinates.
+
+Both endpoints are public and require no authentication. They return paginated arrays of competition objects.
+
+---
+
+## List competitions
+
+```
+GET /api/v0/competitions
+```
+
+Returns a paginated list of competitions. By default the response includes delegates, organizers, and events associations. Results are sorted by start date ascending unless the `sort` parameter is provided.
+
+### Query parameters
+
+<ParamField query="q" type="string">
+  Free-text search against the competition name and city. For example, `q=Berlin` returns all competitions with "Berlin" in the name or city.
+</ParamField>
+
+<ParamField query="start" type="string">
+  ISO 8601 date (`YYYY-MM-DD`). Only return competitions with a start date on or after this value.
+</ParamField>
+
+<ParamField query="end" type="string">
+  ISO 8601 date (`YYYY-MM-DD`). Only return competitions with an end date on or before this value.
+</ParamField>
+
+<ParamField query="country_iso2" type="string">
+  Filter by country. Accepts two-letter ISO 3166-1 alpha-2 country codes (e.g. `US`, `DE`, `JP`).
+</ParamField>
+
+<ParamField query="event_ids[]" type="string[]">
+  Filter to competitions that include the given events. Pass the parameter multiple times to require multiple events. Event IDs follow WCIF conventions (e.g. `333`, `222`, `444`, `333bf`, `pyram`).
+
+  Example: `?event_ids[]=333&event_ids[]=333bf`
+</ParamField>
+
+<ParamField query="announced_after" type="string">
+  ISO 8601 datetime. Only return competitions announced after this point in time.
+</ParamField>
+
+<ParamField query="continent" type="string">
+  Filter by WCA continent ID (e.g. `_Europe`, `_North America`).
+</ParamField>
+
+<ParamField query="sort" type="string">
+  Comma-separated list of fields to sort by. Prefix a field name with `-` for descending order.
+  Common values: `start_date`, `-start_date`, `name`, `announced_at`.
+</ParamField>
+
+<ParamField query="ongoing_and_future" type="string">
+  ISO 8601 datetime. Return competitions whose end date is on or after the given point in time. Useful for showing a live + upcoming feed.
+</ParamField>
+
+<ParamField query="include_cancelled" type="boolean">
+  When `true`, includes cancelled competitions in the results. Defaults to `false`.
+</ParamField>
+
+<ParamField query="admin_status" type="string">
+  Admin-only filter. Filters by an internal status label. Requires authentication with `manage_competitions` scope.
+</ParamField>
+
+<ParamField query="managed_by_me" type="boolean">
+  When `true`, returns only competitions the authenticated user manages (is a delegate or organizer of). Requires authentication with `manage_competitions` scope.
+</ParamField>
+
+<ParamField query="delegate" type="string">
+  Filter by delegate WCA ID or user ID.
+</ParamField>
+
+### Pagination
+
+The endpoint uses header-based pagination compatible with the [WillPaginate](https://github.com/mislav/will_paginate) convention. Pagination metadata is returned in response headers:
+
+| Header | Description |
+|--------|-------------|
+| `X-Total` | Total number of matching competitions |
+| `X-Per-Page` | Number of results per page |
+| `X-Page` | Current page number |
+
+Control pagination with the `page` and `per_page` query parameters. The default is 25 results per page.
+
+### Response
+
+Returns an array of competition objects. Each item includes the full competition info payload.
+
+<ResponseField name="id" type="string" required>
+  Unique competition identifier. Uses a CamelCase alphanumeric format derived from the competition name and year (e.g. `WC2003`, `BerlinAutumn2025`).
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Full display name of the competition (e.g. `"WCA World Championship 2003"`).
+</ResponseField>
+
+<ResponseField name="short_display_name" type="string">
+  Abbreviated name suitable for compact UIs.
+</ResponseField>
+
+<ResponseField name="start_date" type="string" required>
+  Start date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="end_date" type="string" required>
+  End date in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="registration_open" type="string" required>
+  ISO 8601 datetime when registration opens.
+</ResponseField>
+
+<ResponseField name="registration_close" type="string" required>
+  ISO 8601 datetime when registration closes.
+</ResponseField>
+
+<ResponseField name="announced_at" type="string" required>
+  ISO 8601 datetime when the competition was publicly announced.
+</ResponseField>
+
+<ResponseField name="country_iso2" type="string" required>
+  Two-letter ISO 3166-1 alpha-2 country code.
+</ResponseField>
+
+<ResponseField name="city" type="string" required>
+  City (and optionally state/region) where the competition takes place.
+</ResponseField>
+
+<ResponseField name="venue" type="string" required>
+  Venue name, possibly including WCA-style inline hyperlinks.
+</ResponseField>
+
+<ResponseField name="latitude_degrees" type="number" required>
+  Venue latitude in decimal degrees.
+</ResponseField>
+
+<ResponseField name="longitude_degrees" type="number" required>
+  Venue longitude in decimal degrees.
+</ResponseField>
+
+<ResponseField name="event_ids" type="string[]" required>
+  Array of WCIF event IDs offered at the competition (e.g. `["333", "222", "444"]`).
+</ResponseField>
+
+<ResponseField name="main_event_id" type="string" required>
+  The primary event for this competition.
+</ResponseField>
+
+<ResponseField name="competitor_limit" type="integer" required>
+  Maximum number of accepted competitors. `null` if no limit is enforced.
+</ResponseField>
+
+<ResponseField name="championship_types" type="string[]">
+  Championship designations, if any (e.g. `["world"]`, `["continental"]`, `["national"]`).
+</ResponseField>
+
+<ResponseField name="delegates" type="object[]">
+  Array of delegate user objects, each with `id`, `name`, and `avatar`.
+</ResponseField>
+
+<ResponseField name="organizers" type="object[]">
+  Array of organizer user objects, each with `id`, `name`, `wca_id`, and `url`.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competitions?country_iso2=US&start=2025-01-01&end=2025-12-31&event_ids[]=333&per_page=5"
+```
+
+```bash cURL with pagination
+curl "https://www.worldcubeassociation.org/api/v0/competitions?q=Open&page=2&per_page=10"
+```
+
+</CodeGroup>
+
+```json Response (truncated)
+[
+  {
+    "id": "WC2025",
+    "name": "WCA World Championship 2025",
+    "short_display_name": "WC2025",
+    "start_date": "2025-07-03",
+    "end_date": "2025-07-06",
+    "registration_open": "2025-01-03T14:00:00.000Z",
+    "registration_close": "2025-01-10T14:00:00.000Z",
+    "announced_at": "2024-10-08T22:00:00.000Z",
+    "country_iso2": "US",
+    "city": "Seattle, Washington",
+    "venue": "Seattle Convention Center",
+    "latitude_degrees": 47.611387,
+    "longitude_degrees": -122.332554,
+    "event_ids": ["222", "333", "444", "555", "666", "777", "333bf", "333fm", "333oh", "clock", "minx", "pyram", "skewb", "sq1", "444bf", "555bf", "333mbf"],
+    "main_event_id": "333",
+    "competitor_limit": 2000,
+    "championship_types": ["world"],
+    "delegates": [
+      { "id": 42, "name": "Jane Delegate", "avatar": { "url": "https://..." } }
+    ],
+    "organizers": [
+      { "id": 7, "name": "John Organizer", "wca_id": "2015ORGA01", "url": "https://..." }
+    ]
+  }
+]
+```
+
+---
+
+## Competition index
+
+```
+GET /api/v0/competition_index
+```
+
+Returns the same paginated list but with a schema optimised for table and list views. Compared to the standard endpoint, the response omits some nested detail and adds fields like `short_display_name`, `championship_types`, and geographic coordinates at the top level.
+
+This endpoint accepts the **same query parameters** as `GET /api/v0/competitions`.
+
+<Note>
+  When the authenticated user has admin competition permissions, the response also includes `results_submitted_at`, `results_posted_at`, `report_posted_at`, `report_posted_by_user`, and an array of delegate objects with avatars.
+</Note>
+
+### Response fields
+
+The response contains the same core fields as the standard endpoint (`id`, `name`, `start_date`, `end_date`, `country_iso2`, `event_ids`, etc.) plus:
+
+<ResponseField name="short_display_name" type="string" required>
+  Compact display name, useful in narrow table columns.
+</ResponseField>
+
+<ResponseField name="championship_types" type="string[]" required>
+  Championship designations for this competition. Empty array if not a championship.
+</ResponseField>
+
+<ResponseField name="results_submitted_at" type="string">
+  ISO 8601 datetime when results were submitted. Only present for admin users.
+</ResponseField>
+
+<ResponseField name="results_posted_at" type="string">
+  ISO 8601 datetime when results were posted publicly. Only present for admin users.
+</ResponseField>
+
+<ResponseField name="report_posted_at" type="string">
+  ISO 8601 datetime when the delegate report was posted. Only present for admin users.
+</ResponseField>
+
+### Example
+
+```bash cURL
+curl "https://www.worldcubeassociation.org/api/v0/competition_index?continent=_Europe&ongoing_and_future=2025-04-01T00:00:00Z"
+```
+
+```json Response (truncated)
+[
+  {
+    "id": "BerlinAutumn2025",
+    "name": "Berlin Autumn 2025",
+    "short_display_name": "Berlin Autumn 2025",
+    "start_date": "2025-10-18",
+    "end_date": "2025-10-19",
+    "registration_open": "2025-08-01T10:00:00.000Z",
+    "registration_close": "2025-09-15T10:00:00.000Z",
+    "announced_at": "2025-07-15T12:00:00.000Z",
+    "country_iso2": "DE",
+    "city": "Berlin",
+    "venue": "Jugendherberge Berlin",
+    "latitude_degrees": 52.5200,
+    "longitude_degrees": 13.4050,
+    "event_ids": ["333", "222", "444", "pyram", "skewb"],
+    "main_event_id": "333",
+    "competitor_limit": 150,
+    "championship_types": []
+  }
+]
+```

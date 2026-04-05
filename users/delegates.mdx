@@ -1,0 +1,148 @@
+---
+title: "Delegates"
+description: "What WCA Delegates are, the different delegate types, their responsibilities, and how the delegate system is organized geographically."
+---
+
+WCA Delegates are the WCA's official representatives at competitions. They serve as the on-site authority who ensures that competitions are run in accordance with the WCA Regulations, and they act as the primary point of contact between competitors, organizers, and the broader WCA organization.
+
+## What Is a WCA Delegate?
+
+A Delegate is a user whose active `UserRole` in a `delegate_regions` group carries a non-trainee status. On the platform, the check `any_kind_of_delegate?` returns `true` for anyone with an active delegate role metadata record, while `staff_delegate?` returns `true` only for Delegates who are not Trainee Delegates.
+
+Delegates have elevated platform access compared to regular competitors: they can create competitions, submit results, write delegate reports, view hidden competition data, and access the Delegate Panel. Senior Delegates additionally manage the Delegates within their region.
+
+## Delegate Types
+
+The platform recognizes five statuses within a delegate region role, ranked from lowest to highest:
+
+| Status | Description |
+|---|---|
+| `trainee_delegate` | Learning the delegation process under the supervision of a full Delegate. Does not count as a voting-eligible staff member. |
+| `junior_delegate` | A newer full Delegate with limited independent authority, depending on regional policy. Counts as staff but not as an eligible voter. |
+| `delegate` | A full Delegate. Counts as staff and as an eligible voter in WCA elections. |
+| `regional_delegate` | Oversees a specific geographic sub-region within a Senior Delegate's area. Acts as a lead-level delegate for that region and is an eligible voter. |
+| `senior_delegate` | Leads an entire delegate region. Manages all Delegates within their region, confirms WCA ID claims, and has the highest routine authority among Delegates. |
+
+<Note>
+  Trainee Delegates appear on competition pages as `trainee-delegate` in the WCIF (WCA Interchange Format). They can assist at competitions but a full (staff) Delegate must be present and responsible for the event.
+</Note>
+
+## Delegate Responsibilities
+
+<CardGroup cols={2}>
+  <Card title="Announce Competitions" icon="bullhorn" href="/competitions/organizing">
+    Delegates initiate the competition creation process on the website and work with the WCA Competition Announcement Team (WCAT) to get the competition publicly announced. A Delegate must be listed on every competition before it can be confirmed and announced.
+  </Card>
+  <Card title="Ensure Regulations Compliance" icon="book-open" href="/competitions/overview">
+    At the competition, Delegates are responsible for ensuring that all events are scrambled correctly, all results are recorded accurately, incidents are handled in accordance with the WCA Regulations, and any regulation questions are resolved on the spot.
+  </Card>
+  <Card title="Submit Results" icon="upload" href="/competitions/results-submission">
+    After a competition ends, Delegates upload the results JSON file and submit it for review by the WCA Results Team. Only staff Delegates (not Trainees) can submit results. Results can be uploaded by any listed Delegate, but formal submission requires a staff Delegate's confirmation.
+  </Card>
+  <Card title="Write Delegate Reports" icon="file-lines" href="/competitions/organizing">
+    Staff Delegates write a delegate report for each competition they oversee. Reports are submitted after the competition and are visible to WCA staff once posted. They summarize how the competition went, note any incidents, and provide feedback to the broader organization.
+  </Card>
+  <Card title="Handle WCA ID Claims" icon="id-card" href="/users/accounts">
+    When a competitor submits a WCA ID claim and selects a nearby Delegate to confirm it, that Delegate receives an email notification and is responsible for reviewing and confirming (or rejecting) the claim in the platform. Senior Delegates receive pending claims for Delegates in their region who are later demoted.
+  </Card>
+  <Card title="Manage Newcomer Data" icon="user-plus" href="/competitions/results-submission">
+    Delegates run newcomer checks before submitting results, verifying that name formats, dates of birth, and potential duplicate profiles are reviewed and resolved. The platform provides dedicated newcomer check tools within the competition's submit-results workflow.
+  </Card>
+</CardGroup>
+
+## Competition Oversight Workflow
+
+The following steps describe the full lifecycle of a Delegate's involvement with an official WCA competition, from announcement through results posting.
+
+<Steps>
+  <Step title="Create and Configure the Competition">
+    The Delegate (or an organizer with Delegate approval) creates the competition in the system. The Delegate is added to the competition's delegate list and fills in all required fields: venue, schedule, events, competitor limits, and registration settings. The competition must be confirmed by a staff Delegate before it can be announced.
+  </Step>
+
+  <Step title="Competition Is Announced">
+    Once confirmed, the competition is submitted to WCAT for announcement. The Delegate may coordinate with WCAT if additional information or corrections are needed. After announcement, the competition becomes publicly visible and registration opens according to the configured dates.
+  </Step>
+
+  <Step title="Run the Competition">
+    On competition day, the Delegate is the on-site WCA authority. Responsibilities include verifying scramble correctness, adjudicating incidents under the WCA Regulations, ensuring fair judging, and collecting all results on scorecards or digital scoring systems. At least one staff Delegate must be physically present throughout.
+  </Step>
+
+  <Step title="Upload the Results">
+    After the competition, the Delegate uploads a results JSON file (generated by the competition management software) via the **Submit Results** page. The platform runs validation checks, including potential duplicate competitor detection, newcomer name format checks, and date of birth verification.
+  </Step>
+
+  <Step title="Resolve Newcomer Issues">
+    Before submitting, the Delegate reviews the newcomer checks interface. Any flagged issues — such as names that do not follow WCA naming conventions, dates of birth that seem implausible, or competitors whose data closely matches an existing WCA ID — must be resolved before the submission proceeds.
+  </Step>
+
+  <Step title="Submit Results for WRT Review">
+    Once all checks pass, the Delegate formally submits the results. This triggers a notification to the WCA Results Team, who will review, validate, and post the results. The Delegate can monitor the status from the competition's admin page.
+  </Step>
+
+  <Step title="Write and Post the Delegate Report">
+    The Delegate writes their report at `/competitions/:id/report/edit`. The report covers what happened at the competition: incidents, notable moments, feedback for the organization. Once posted, it is distributed to WCA staff via email and archived for future reference.
+  </Step>
+</Steps>
+
+## Delegate Regions
+
+The WCA organizes its Delegates geographically into **delegate regions**, which are `UserGroup` records of type `delegate_regions`. Regions form a hierarchy: a top-level region (e.g. "USA") may have sub-regions (e.g. "USA - North East"), each managed by a Senior Delegate or Regional Delegate.
+
+Each delegate region group has a `GroupsMetadataDelegateRegions` record, which stores:
+
+- **`friendly_id`** — a URL-safe identifier (e.g. `usa`, `europe-west`).
+- **`email`** — a contact address for the region. If not explicitly set, it defaults to `delegates.<friendly_id>@worldcubeassociation.org`.
+
+A Senior Delegate is the `lead_role` of their root region. The platform traverses the group hierarchy upward to find the Senior Delegate for any sub-region:
+
+```ruby
+# From user_group.rb
+def senior_delegate
+  if parent_group_id.nil?
+    self.lead_user
+  else
+    parent_group.senior_delegate
+  end
+end
+```
+
+Regional Delegates lead specific sub-regions and are eligible voters. Both Senior and Regional Delegates can edit the groups and roles within their own region hierarchy.
+
+A Delegate's role metadata also records three running statistics maintained by the WRT:
+
+- `first_delegated` — date of the Delegate's first official competition.
+- `last_delegated` — date of the most recent official competition.
+- `total_delegated` — total number of officially delegated competitions.
+
+## The Delegate Panel
+
+Delegates access their dedicated panel section at `/panel`. The **Delegate Panel** provides:
+
+- **Important Links** — A curated list of references, tools, and resources maintained for delegates.
+- **Banned Competitors** — A read-only view of currently banned competitors, so Delegates can identify any registrations that should be blocked.
+
+Senior Delegates have additional access via the **Senior Delegate Panel**:
+
+- **Delegate Forms** — Forms for requesting Delegate status changes within their region.
+- **Regions** — An interface for viewing and managing the delegate region hierarchy under their authority.
+- **Delegate Probations** — View and manage probation statuses for Delegates within their region.
+- **Subordinate Delegate Claims** — Review WCA ID claims that have been assigned to Delegates in their region.
+- **Subordinate Upcoming Competitions** — A dashboard of upcoming competitions being delegated by Delegates within their region.
+
+## How to Become a Delegate
+
+The path to becoming a WCA Delegate varies by region, but the general process follows these steps:
+
+1. **Compete actively** — Establish a track record as a committed competitor and community member within your region.
+2. **Volunteer at competitions** — Gain experience as a judge, scrambler, and runner. Demonstrate reliability and knowledge of the WCA Regulations.
+3. **Express interest** — Contact the Senior Delegate for your region and express your interest in becoming a Delegate. Senior Delegates are listed on the [WCA website](https://www.worldcubeassociation.org/delegates).
+4. **Trainee period** — Most regions require a period as a Trainee Delegate, during which you shadow experienced Delegates at competitions and learn the submission workflow hands-on.
+5. **Promotion to full Delegate** — The Senior Delegate, in coordination with the WCA Board, formally promotes you to `delegate` status by creating a new `UserRole` with that status. The role change triggers notification emails to relevant parties.
+
+<Tip>
+  There is no global application form for becoming a Delegate. The process is managed at the regional level. Reach out directly to the Senior Delegate for your country or region.
+</Tip>
+
+## Delegate Probation
+
+If a Delegate's conduct or performance falls below WCA standards, the WIC, Board, or Officers can place them on **delegate probation** by adding an active role in a `delegate_probation` group. Probations have a defined `end_date`. While on probation, the Delegate retains their role but is subject to additional oversight. The WIC, WEAT, WFC, and Board panels all include access to the probation management interface.

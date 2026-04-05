@@ -1,0 +1,145 @@
+---
+title: "Results Submission"
+description: "How delegates upload results, run newcomer checks, match scrambles, and submit results to the WCA Results Team."
+---
+
+After a competition ends, the delegate is responsible for compiling the results and submitting them to the WCA Results Team (WRT) for review and posting. This process involves uploading a results JSON, uploading scramble files, running validation checks, and formally submitting the package.
+
+Only users with the `can_upload_competition_results?` permission for the competition — staff delegates and WCA admins — can perform these actions.
+
+## Submission workflow
+
+<Steps>
+  <Step title="Export or prepare results data">
+    Results data must be in the WCA results JSON format. There are two ways to produce this:
+
+    - **WCA Live**: If the competition used WCA Live (`scoretaking_software: wca_live`), results are already recorded in WCA Live. You can import them directly using the **Import from WCA Live** action — no JSON file needed.
+    - **External scoretaking**: If you used a third-party tool, export the results JSON from that tool and upload it manually.
+
+    <Warning>
+      Once results have been submitted, only WCA admins can re-upload a corrected JSON. Make sure your results are accurate before submitting.
+    </Warning>
+  </Step>
+  <Step title="Upload the results JSON">
+    Go to **Submit results** on the competition page and upload your results JSON file. The system parses the file, validates its structure against the WCA JSON schema, and loads the data into the inbox tables (`inbox_results` and `inbox_persons`).
+
+    When uploading, you choose two options:
+    - **Mark as submitted**: sets `results_submitted_at`, locking the results for further delegate changes.
+    - **Store uploaded JSON**: saves a copy of the raw JSON file attached to the competition record.
+
+    <Warning>
+      If you upload without marking as submitted, you can iterate on the results. Once you mark as submitted, delegates can no longer re-upload — only WCA admins can clear the submission and allow a re-upload.
+    </Warning>
+  </Step>
+  <Step title="Upload scramble files">
+    Go to **Upload scrambles** on the competition page. Upload one or more scramble files (TNoodle `.json` or `.zip` format). Each uploaded file is stored as a `ScrambleFileUpload` record.
+
+    After uploading, the system attempts to match each scramble set in the file to a round in the competition schedule. You can manually adjust the round matching if the automatic detection is incorrect.
+
+    <Warning>
+      Scramble sets that are not matched to a round will not be included in the posted results. Verify all scramble sets are correctly matched before submitting.
+    </Warning>
+  </Step>
+  <Step title="Run newcomer checks">
+    Go to **Newcomer checks** to validate data for competitors who have no existing WCA ID (newcomers). The dashboard provides three checks:
+
+    **Duplicate detection**
+    Runs an asynchronous job (`ComputePotentialDuplicates`) to compare newcomer name and demographic data against the existing person database. Potential duplicates are flagged for manual review. This catches cases where a returning competitor registered without a WCA ID.
+
+    **Name format check**
+    Checks that each newcomer's name follows WCA naming conventions (correct character sets, capitalization, etc.) using `ResultsValidators::PersonsValidator.name_validations`.
+
+    **Date of birth check**
+    Validates that each newcomer's date of birth is plausible (not in the future, not impossibly old) using `ResultsValidators::PersonsValidator.dob_validations`.
+
+    <Warning>
+      Newcomer checks can only be run before results are submitted. Resolve all flagged issues before proceeding to submission.
+    </Warning>
+  </Step>
+  <Step title="Validate results">
+    Before submitting, the system runs `ResultsValidators::CompetitionsResultsValidator` against the full result set. This checks:
+    - No results reference events or rounds not on the schedule
+    - Rankings and averages are correctly computed
+    - Person records are consistent
+    - No results exist for persons who were not accepted registrants
+
+    If the validator returns any errors, submission is blocked. You must fix the underlying data before the **Submit results** button becomes active.
+  </Step>
+  <Step title="Submit to WRT">
+    When all checks pass, click **Submit results**. You are prompted to write a message to WRT describing anything notable about the competition or results.
+
+    Submitting does the following:
+    - Sets `results_submitted_at` on the competition.
+    - Creates a `TicketsCompetitionResult` record (or updates an existing aborted one) with status `submitted` and your delegate message.
+    - Sends an email to the WCA Results Team with the validator output and your message.
+
+    <Warning>
+      If there is already an active (non-aborted) results ticket for this competition, submission is blocked. This prevents duplicate submissions. Only WRT can cancel an existing ticket to allow re-submission.
+    </Warning>
+  </Step>
+  <Step title="WRT review and posting">
+    WRT receives the ticket and reviews the inbox results. They can verify warnings, merge inbox results into the main results table, and post the results. Once posted:
+    - `results_posted_at` and `results_posted_by` are set on the competition.
+    - Results appear on the competition page and count toward rankings, records, and personal bests.
+    - The psych sheet redirects to the posted results view.
+  </Step>
+</Steps>
+
+## Importing results from WCA Live
+
+If your competition used WCA Live for scoretaking, you do not need to export and upload a JSON file. Instead, use the **Import from WCA Live** action on the Submit results page.
+
+This action reads results directly from the `rounds` and `round_results` tables in the WCA Live database, paired with accepted registrations and matched scramble sets. It constructs the same inbox data structure as a JSON upload.
+
+When importing from WCA Live:
+- Results are pulled only for rounds that have been completed and contain results.
+- Persons are derived from accepted registrations that appear in those results.
+- Scrambles are pulled from the competition's matched scramble sets.
+- The stored JSON copy (if requested) is the full WCIF of the competition, including personal data (`authorized: true`), because WRT members have admin-level access.
+
+<Note>
+  You can still upload scramble files separately even when importing from WCA Live. In fact, scramble file upload and matching must be done before importing from Live, because the import pulls scrambles from the matched sets.
+</Note>
+
+## Scramble file upload and matching
+
+Scramble files are produced by TNoodle, the WCA's official scramble generator. Each file contains one or more scramble sets, each tagged with an event and round.
+
+The matching process links each scramble set in the file to a specific round in the competition schedule. The system uses:
+- Event ID
+- Round type ID
+- Round ID (if present in the file)
+
+Matched sets are stored as `MatchedScrambleSet` records linked to the corresponding `Round`. Unmatched sets remain associated with the `ScrambleFileUpload` but are not included in submitted results.
+
+Use the **Update round matching** action to manually assign or reassign scramble sets to rounds if the automatic matching is wrong or ambiguous.
+
+## Newcomer checks in detail
+
+### Duplicate detection
+
+The duplicate checker runs as a background job (`ComputePotentialDuplicates`) and stores its status in a `DuplicateCheckerJobRun` record. You can check the last job run status via the newcomer checks page.
+
+If a previous job is still running (or ran too long without completing), the system marks it as `long_running_uncertain` and starts a new job. Results are flagged as potential duplicates if the newcomer's name and demographic data closely match an existing person record.
+
+Each detected duplicate should be manually investigated. If the newcomer is a returning competitor, you should update their registration to include their correct WCA ID before submitting.
+
+### Name format
+
+Names are checked against WCA person naming standards. Common issues include:
+- Mixed scripts (e.g., Latin and Cyrillic characters in the same name)
+- All-lowercase names
+- Names with unusual punctuation
+
+### Date of birth
+
+Each newcomer's date of birth is checked to ensure it is:
+- Not in the future
+- Not unreasonably old (e.g., before 1900)
+- A valid calendar date
+
+## After submission
+
+Once results are submitted, the competition displays a "Results are being processed" message to the public. The delegate report should be filed around the same time — see [Organizing a Competition](/competitions/organizing) for details on the delegate report.
+
+WRT communicates with the delegate through the ticketing system if there are any issues with the submitted results. Once WRT posts the results, you will receive a notification and the official results will appear on the competition page.

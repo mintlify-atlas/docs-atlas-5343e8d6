@@ -1,0 +1,66 @@
+---
+title: "Notifications"
+description: "Stay informed about competition updates, registration status changes, and pending delegate tasks through in-app and email notifications."
+---
+
+The WCA platform delivers notifications through two channels: **in-app notifications** shown on the notifications page, and **email notifications** sent by background jobs. In-app notifications are generated dynamically each time a user visits the notifications page — they reflect the current state of the system rather than a stored event log.
+
+## In-app notifications
+
+Log in and visit `/notifications` to see all current notifications relevant to your account. The page is powered by `NotificationsHelper#notifications_for_user`, which evaluates your account roles and competition associations in real time.
+
+<Accordion title="WCA ID claim status">
+  If your account is not yet linked to a WCA ID, the notifications page shows a prompt to claim one. Once you have submitted a claim and a delegate is reviewing it, the notification updates to show which delegate is handling your claim and which WCA ID is pending.
+
+  If you are a delegate, you see a notification for every confirmed user who has claimed a WCA ID that you are responsible for assigning.
+</Accordion>
+
+<Accordion title="Incomplete competitor profile">
+  If your profile is missing required fields (such as date of birth or country), you will see a warning that your profile is incomplete and that you will not be able to register for competitions until it is resolved. The notification links directly to your profile edit page.
+</Accordion>
+
+<Accordion title="Pending delegate report">
+  Delegates see a notification for every competition they have delegated where the delegate report has not yet been posted. The notification includes the competition name and links directly to the delegate report form. These notifications persist until the report is submitted.
+</Accordion>
+
+<Accordion title="Pending results submission">
+  Delegates see a notification for every competition they have delegated where the official results have not yet been submitted to the WCA. The notification links to the results submission page for that competition.
+</Accordion>
+
+<Accordion title="WCAT: competitions pending announcement">
+  Members of the WCA Competition Announcement Team (WCAT) see notifications for competitions that have been confirmed by their organizers but are not yet publicly visible — these need to be reviewed and announced. They also see notifications for competitions that are publicly visible but have not been confirmed, which creates a risk of changes being made to a live competition page.
+</Accordion>
+
+## Email notifications
+
+Several background jobs run on a schedule to send email reminders for time-sensitive events.
+
+<Accordion title="Registration reminder (RegistrationReminderJob)">
+  This job runs daily and finds competitions whose registration window opens within the next 24 hours. For each qualifying competition, it emails:
+
+  - Users who have **bookmarked** the competition and are not yet registered or are on the pending list.
+  - Competition **managers** who are not yet registered.
+
+  To prevent duplicate emails, the job records the time the reminder was sent (`registration_reminder_sent_at`) and skips a competition if a reminder was sent within the last 2 days. This allows a second reminder to be sent if a competition has multiple registration periods.
+
+  The email is delivered via `CompetitionsMailer.registration_reminder` and is sent asynchronously using `deliver_later`.
+</Accordion>
+
+<Accordion title="Delegate report reminder (SubmitReportNagJob)">
+  This job runs in production only and targets competitions that have ended but whose delegate report has not been posted. Two types of emails are sent:
+
+  - **Reminder:** Sent exactly 6 days after the competition end date if no reminder has been sent yet. Uses `CompetitionsMailer.submit_report_reminder`.
+  - **Nag:** Sent every 8 or more days after either the competition end date or the last nag, as long as the report remains unposted. Uses `CompetitionsMailer.submit_report_nag`.
+
+  Timestamps for the last reminder (`reminder_sent_at`) and last nag (`nag_sent_at`) are stored on the `DelegateReport` record to prevent duplicate sends.
+</Accordion>
+
+<Accordion title="Results submission nag (SubmitResultsNagJob)">
+  This job runs in production only and targets competitions that have ended but whose official results have not been submitted (`results_submitted_at` is null). A nag email is sent via `CompetitionsMailer.submit_results_nag` if 8 or more days have passed since the competition ended or since the last nag was sent. The time of the last nag is recorded on the competition as `results_nag_sent_at`.
+</Accordion>
+
+## Where notifications appear
+
+In-app notifications are shown at `/notifications`. The page requires you to be logged in. Each notification is a text message with a direct link to the relevant action — there is no separate notification bell or badge count in the current interface; you navigate to the notifications page directly.
+
+Email notifications are sent to the email address on your WCA account. Registration reminder emails go to individual users; delegate report and results nag emails go to the delegates and organizers associated with the competition.

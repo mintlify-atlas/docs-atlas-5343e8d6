@@ -1,0 +1,155 @@
+---
+title: "Organizing a Competition"
+description: "How to create, configure, and manage a WCA competition as an organizer or delegate."
+---
+
+Organizing a WCA competition involves creating the competition record, filling in all required details, coordinating with your delegate, building a schedule, and eventually submitting results. This page covers the full organizer and delegate workflow.
+
+## Who can organize
+
+Any WCA member can be added as an organizer for a competition. However, only users with the `can_create_competitions?` permission — which includes all active WCA Delegates — can create a new competition record on the website.
+
+Every competition must have:
+- At least one **staff delegate** (a full WCA Delegate, not a trainee). As of April 2026, competitions confirmed on or after April 1, 2026 require a designated **lead delegate**.
+- At least one **organizer**.
+
+Trainee delegates can be listed on a competition but do not count toward the minimum delegate requirement.
+
+## Creating a competition
+
+To create a new competition, go to **Competitions → New competition** (available only if you have delegate or admin permissions).
+
+### Required fields
+
+| Field | Notes |
+|---|---|
+| **Name** | Must match the pattern `Name YYYY`. Maximum 50 characters. The ID and cell name are auto-generated from this. |
+| **Venue** | Venue name, optionally with a link using the format `[{Display text}{https://url}]`. Max 240 characters. |
+| **Venue address** | Full street address. Required when confirming. |
+| **City** | City name. Max 50 characters. |
+| **Country** | Country where the competition is held. |
+| **Latitude / Longitude** | Used to detect nearby competitions. Entered in degrees; stored as microdegrees internally. |
+| **Start date / End date** | Must span at most 6 days. At confirmation, start date must be at least 28 days in the future. |
+| **Events** | At least one event required. Each event must have at least one round with an advancement condition on all non-final rounds. |
+| **Staff delegates** | At least one staff delegate required when confirming. |
+| **Organizers** | At least one organizer required when confirming. |
+| **Registration open / close** | Required when using WCA registration. Both must be before `start_date`. |
+| **Competitor limit** | Required for competitions created after September 1, 2018. Must be between 1 and 5000. Requires a written reason. |
+| **Entry fee** | Required for competitions in single-country venues created after July 17, 2018. |
+| **Refund policy** | A percentage (0–100) and a cutoff date before `start_date`. Required after August 22, 2018. |
+| **On-the-spot registration** | Whether competitors can register at the venue. Required field for competitions created after August 22, 2018. |
+| **Name reason** | A brief explanation of the competition name. Required when confirming for competitions created after October 20, 2018. |
+| **External website** | Required if not generating a WCA-hosted website. Must be a valid `https://` or `http://` URL. |
+| **Waiting list deadline** | The date after which waiting-list competitors are no longer automatically promoted. Required at confirmation. |
+
+<Tip>
+  The competition ID and cell name are auto-generated from the full name when you save. You can override them manually if needed, but the ID must be alphanumeric only and is used as the URL slug.
+</Tip>
+
+## Editing competition details
+
+After creating a competition, you can edit it at any time before the delegate confirms it. Once confirmed, some fields become locked or require admin access.
+
+### Events
+
+Go to **Edit → Events** to add or remove events and configure rounds for each event. For each round you must set:
+- The **format** (e.g., average of 5, mean of 3, best of 3)
+- A **time limit** and optionally a **cutoff** for combined rounds
+- An **advancement condition** on every round except the final
+
+The schedule editor locks after results are submitted. Only admins can edit the schedule at that point.
+
+### Schedule
+
+Go to **Edit → Schedule** to build the venue layout and assign rounds to time slots. Competitions with a start date after December 31, 2018 require every round to appear in the schedule before confirmation is possible.
+
+For 3x3 Multi-Blind and Fewest Moves events, each attempt must be individually scheduled.
+
+### Tabs
+
+Custom tabs let you add extra sections to the competition page — for example, a travel guide, FAQ, or sponsor information. Tabs are ordered by `display_order` and created under **Edit → Tabs**.
+
+## Cloning an existing competition
+
+If you are organizing a recurring event, you can clone an existing competition to reuse its settings. Navigate to the competition you want to clone and choose **Clone competition**. This copies the following attributes to a new draft:
+
+- Venue details (city, country, address, coordinates)
+- Information, contact, and remarks text
+- Registration settings (limits, fees, policies, payment options)
+- Events and organizers/delegates
+
+The following are **not** cloned: dates, name, ID, cell name, registration window, results data, schedule, scrambles, championships, and series membership.
+
+<Note>
+  Tabs are cloned after the new competition is saved. If the clone fails partway through, check whether tabs were copied correctly.
+</Note>
+
+## Confirmation and announcement workflow
+
+<Steps>
+  <Step title="Fill in all required fields">
+    Complete all required fields on the edit form: venue, address, coordinates, dates, events, schedule, delegate, organizer, registration window, competitor limit, entry fee, refund policy, and name reason.
+  </Step>
+  <Step title="Delegate confirms the competition">
+    A staff delegate on the competition reviews the details and clicks **Confirm**. This sets `confirmed_at` to the current timestamp. An email is sent to WCAT and to all organizers. The competition is not yet publicly visible.
+  </Step>
+  <Step title="WCAT announces the competition">
+    The WCA Competition Announcement Team reviews the confirmed competition. If approved, they announce it: `announced_at` and `announced_by` are set, and `show_at_all` becomes `true`. Organizers receive an announcement notification email.
+
+    <Warning>
+      Registration cannot open fewer than 48 hours after the announced timestamp. If the `registration_open` time you set would violate this, the system will warn you.
+    </Warning>
+  </Step>
+  <Step title="Registration opens">
+    At the `registration_open` timestamp, competitors can begin registering on the WCA website (if `use_wca_registration` is enabled) or via your external registration page.
+  </Step>
+  <Step title="Competition runs">
+    The competition takes place. Scoretaking proceeds via the configured software (WCA Live, external tool, or internal).
+  </Step>
+  <Step title="Submit results and file delegate report">
+    After the competition, the delegate uploads results and submits them to WRT. See [Results Submission](/competitions/results-submission) for the full process. The delegate also files the delegate report.
+  </Step>
+</Steps>
+
+### Cancelling a competition
+
+A confirmed and announced competition can be cancelled by WCAT. Cancellation sets `cancelled_at` and `cancelled_by`. Cancelled competitions remain visible on the website with a "(cancelled)" label. WCAT can also uncancel a competition if needed.
+
+Organizers can close registration early once the competition is full by using the **Close registration** action, which sets `registration_close` to the current time.
+
+## Delegate report
+
+Every competition requires a delegate report, filed by the staff delegate(s) after the event concludes. The report is a structured Markdown document with several sections:
+
+| Section | Content |
+|---|---|
+| **Summary** | High-level overview of how the competition went (working_group_2024 format only). |
+| **Venue** | Venue setup, photos required (at least 2 for working_group_2024 format). |
+| **Organization** | Notes on organization quality and any issues. |
+| **Incidents** | Any regulation incidents that occurred during the competition. |
+| **Remarks** | Additional notes for WCAT or WRC. |
+
+The delegate report requires a **schedule URL** and a **discussion URL** for competitions that ended after July 21, 2019.
+
+### Submitting the delegate report
+
+The report can only be submitted (`posted`) by a staff delegate, and only **after** the competition results have been submitted or posted. Once posted:
+
+- An email is sent to the regional reports mailing list (e.g., `reports.europe.DE@worldcubeassociation.org`).
+- A WRC follow-up email is sent.
+- Two WRC members are randomly assigned to the report for review.
+
+<Note>
+  If you flagged WRC or WIC incidents in the report, the relevant committee will receive a separate notification with the incident details.
+</Note>
+
+## Admin operations on results data
+
+WCA admins (Results Team members) have additional tools on the competition admin edit page:
+
+- **Clear submission** — removes the submitted results inbox so the delegate can re-upload.
+- **Delete results data** — permanently removes posted results from the competition.
+- **Upload results** — allows uploading a corrected results JSON after submission.
+- **Check existing results** — runs validation on the current inbox results.
+
+These operations are only available after a competition's results have been submitted or posted, and require `can_admin_results?` permission.

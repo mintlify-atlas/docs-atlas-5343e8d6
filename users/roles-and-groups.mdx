@@ -1,0 +1,179 @@
+---
+title: "Roles and Groups"
+description: "How the WCA structures authority through user groups and role metadata, and what each group type controls."
+---
+
+The WCA platform manages permissions through a group-based role system. Every person who holds an official position — whether a Delegate, a Results Team member, or a Board director — does so through a `UserRole` that links them to a `UserGroup`. This design lets the platform derive all access-control decisions from a single, auditable data structure.
+
+## Core Concepts
+
+A **UserGroup** represents an organizational unit: a delegate region, a team, the Board, etc. Each group has a `group_type` that determines its behavior, and optionally a **metadata** record that stores group-level properties such as email addresses or public-facing identifiers.
+
+A **UserRole** links one user to one group for a defined time range (`start_date` to `end_date`). Roles without an `end_date`, or with an `end_date` in the future, are **active**. Each role also carries its own **role metadata** record that stores the user's status within the group (e.g. `senior_delegate`, `leader`, `member`).
+
+```
+UserGroup (group_type: "delegate_regions", name: "USA")
+  └── UserRole (user: Alice, start_date: 2022-01-01, end_date: nil)
+        └── RolesMetadataDelegateRegions (status: "senior_delegate", location: "California")
+```
+
+<Note>
+  A user's permissions are derived entirely from their active roles. There are no per-user permission flags outside of this system. Changing a role's `end_date` to today immediately revokes all derived access for that role.
+</Note>
+
+## Group Types
+
+The `UserGroup` model defines eight group types, each serving a distinct organizational purpose:
+
+| Group Type | Description |
+|---|---|
+| `delegate_regions` | Geographic regions with a hierarchy of Delegate roles. |
+| `delegate_probation` | Temporary groups placed on Delegates under review. |
+| `teams_committees` | Official WCA Teams and Committees. |
+| `councils` | Advisory Councils recognized by WCA Motions. |
+| `board` | The WCA Board of Directors. |
+| `officers` | Executive Officers of the WCA. |
+| `translators` | Volunteers who translate the WCA website. |
+| `banned_competitors` | Competitors who have been banned from WCA events. |
+
+## Role Status and Ranking
+
+Groups whose type appears in `group_types_containing_status_metadata` carry a `status` field in their role metadata. The platform defines an explicit ranking order for each group type, used for sorting and eligibility checks.
+
+**Delegate Regions** (ascending rank):
+1. `trainee_delegate`
+2. `junior_delegate`
+3. `delegate`
+4. `regional_delegate`
+5. `senior_delegate`
+
+**Teams & Committees and Councils** (ascending rank):
+1. `member`
+2. `senior_member`
+3. `leader`
+
+**Officers** (ascending rank):
+1. `treasurer`
+2. `vice_chair`
+3. `secretary`
+4. `chief_operating_officer`
+5. `executive_director`
+6. `chair`
+
+The Board and Officers have no sub-ranks for voting purposes — all members are treated as eligible voters.
+
+## Eligible Voters
+
+The platform calculates a set of **eligible voters** for internal WCA elections and polls. A role qualifies its holder as an eligible voter based on the following rules:
+
+- **Delegate Regions:** statuses `delegate`, `regional_delegate`, and `senior_delegate`.
+- **Teams & Committees:** statuses `leader` and `senior_member`.
+- **Board:** all members.
+- **Officers:** all members.
+
+Trainee and Junior Delegates are **not** eligible voters. Ordinary team members are **not** eligible voters.
+
+## Teams and Committees
+
+Teams and Committees are recognized by WCA Motion 10.2022.0 and subsequent motions. Each team has a `friendly_id` used in URLs, mailing lists, and Discourse forum groups.
+
+<CardGroup cols={2}>
+  <Card title="WCA Results Team (WRT)" icon="chart-bar" href="https://www.worldcubeassociation.org/teams-committees">
+    Processes and publishes competition results. Manages the results database, approves avatars, runs data validators, merges profiles, and posts competition results to the website. WRT members have the broadest data-administration privileges of any team.
+  </Card>
+  <Card title="WCA Software Team (WST)" icon="code" href="https://www.worldcubeassociation.org/teams-committees">
+    Maintains the WCA website, scoring systems, and developer tooling. WST admins hold the highest platform permissions and are treated as site administrators in production. WST members manage the Translators group.
+  </Card>
+  <Card title="WCA Regulations Committee (WRC)" icon="book" href="https://www.worldcubeassociation.org/teams-committees">
+    Drafts and maintains the WCA Regulations and Guidelines. WRC members can create incidents, manage the incident log, and post announcements to the website.
+  </Card>
+  <Card title="WCA Ethics Committee (WEC)" icon="scale-balanced" href="https://www.worldcubeassociation.org/teams-committees">
+    Handles ethics complaints and disciplinary matters within the WCA community.
+  </Card>
+  <Card title="WCA Financial Committee (WFC)" icon="coins" href="https://www.worldcubeassociation.org/teams-committees">
+    Manages WCA finances, dues tracking, country band assignments, and Xero accounting integrations. WFC members access the WFC Panel for dues exports and dues redirects.
+  </Card>
+  <Card title="WCA Integrity Committee (WIC)" icon="shield-halved" href="https://www.worldcubeassociation.org/teams-committees">
+    Oversees WCA integrity matters including banned competitors, delegate probations, and eligibility lists. WIC members can download voter rolls and view restricted ban history.
+  </Card>
+  <Card title="WCA Competition Announcement Team (WCAT)" icon="bullhorn" href="https://www.worldcubeassociation.org/teams-committees">
+    Announces competitions on the WCA website. WCAT members have competition administration access, allowing them to review, announce, and cancel competitions.
+  </Card>
+  <Card title="WCA Communication Team (WCT)" icon="comments" href="https://www.worldcubeassociation.org/teams-committees">
+    Handles WCA communications, manages the WCA social media presence, approves media submissions, and administers the Discourse forum as moderators. WCT also supports the livestream administration panel.
+  </Card>
+  <Card title="WCA Marketing Team (WMT)" icon="bullseye" href="https://www.worldcubeassociation.org/teams-committees">
+    Manages WCA branding, merchandise, and marketing initiatives.
+  </Card>
+  <Card title="WCA Quality Assurance Committee (WQAC)" icon="circle-check" href="https://www.worldcubeassociation.org/teams-committees">
+    Monitors competition quality and supports the regulation-enforcement pipeline alongside WRC. WQAC members can see competition admin pages and create polls.
+  </Card>
+  <Card title="WCA Appeals Committee (WAPC)" icon="gavel" href="https://www.worldcubeassociation.org/teams-committees">
+    Handles appeals against WIC decisions. WAPC leaders share edit access to the Banned Competitors list with WIC.
+  </Card>
+  <Card title="WCA Education and Awards Team (WEAT)" icon="graduation-cap" href="https://www.worldcubeassociation.org/teams-committees">
+    Manages WCA educational resources and awards programs. WEAT members can view ban histories, manage regional organizations, and access the WEAT Panel.
+  </Card>
+</CardGroup>
+
+## The Board and Officers
+
+The **WCA Board** (`group_type: "board"`) is a singleton group — there is only one Board group, accessed via `GroupsMetadataBoard.singleton_metadata`. All Board members hold lead-level access, are eligible voters, and can access the full Board Panel including the Senior Delegates list, Groups Manager, and the Officers Editor.
+
+**Officers** (`group_type: "officers"`) hold executive positions within the WCA. Officer statuses are `chair`, `vice_chair`, `secretary`, `treasurer`, `executive_director`, and `chief_operating_officer`. The `chief_operating_officer` status carries `higher_permission` designation, which grants the same data-administration rights as a Board member for most platform operations.
+
+## Councils
+
+Councils are advisory bodies recognized by WCA Motions. They use the same `leader` / `senior_member` / `member` status hierarchy as Teams & Committees. Council members can be found through the Groups Manager and appear in the Discourse forum under their council's `friendly_id` group.
+
+## Translators
+
+The `translators` group type is used to track volunteers who translate the WCA website into languages other than English. The WCA Software Team manages membership in translator groups. Translators do not carry role metadata beyond their group membership.
+
+## Banned Competitors
+
+The `banned_competitors` group stores active and historical bans. Each ban role has a `RolesMetadataBannedCompetitors` record with:
+
+- **`ban_reason`** — the stated reason for the ban.
+- **`scope`** — one of three values:
+  - `competing_only` — barred from competing but may attend as a spectator.
+  - `competing_and_attending` — barred from all competition attendance.
+  - `competing_and_attending_and_forums` — barred from attendance and the WCA Discourse forum.
+
+A ban with no `end_date` is indefinite. The platform enforces bans at registration time by checking whether the user is banned on the competition's start date. The list of current banned competitors is only visible to Delegates, WIC, WAPC, Board, Officers, WRT, WEAT, and admins.
+
+## How Roles Affect Permissions
+
+The `User#permissions` method assembles a structured hash of permission scopes at request time. Each permission entry has a `scope` value that is either `"*"` (all resources), an empty array (no access), or an explicit list of resource IDs.
+
+Key derived permissions:
+
+| Permission | Who gets `"*"` scope |
+|---|---|
+| `can_attend_competitions` | Any user who is not banned and has a complete profile. |
+| `can_organize_competitions` | Delegates and results admins. |
+| `can_administer_competitions` | Results admins and WCAT. |
+| `can_view_delegate_admin_page` | Delegates, WRT, WRC, WIC, WQAC, WCAT, WEAT, WCT, WFC. |
+| `can_edit_groups` | Admins, Board, Officers (higher permission), WRT; Senior Delegates for their own sub-regions; team/council leaders for their own group. |
+| `can_access_panels` | Determined per-panel based on the role checks in `User#panel_list`. |
+
+## The Panel System
+
+The WCA website exposes a `/panel` interface that aggregates role-specific management tools. Different roles see different panel pages:
+
+- **Admin Panel** — WST and WST Admin only; all pages visible.
+- **WRT Panel** — Posting dashboard, person editing, avatar approval, data tools.
+- **WST Panel** — Translator management, server status.
+- **Board Panel** — Senior delegates list, leader management, group administration, voter downloads.
+- **Senior Delegate Panel** — Delegate forms, region management, delegate probations, subordinate claim reviews, upcoming competition oversight.
+- **Delegate Panel** — Important links, banned competitors list.
+- **WFC Panel** — Dues export, country bands, Xero users, dues redirects, delegate probations.
+- **WIC Panel** — Voter downloads, banned competitors, delegate probations, helpful queries.
+- **WEAT Panel** — Banned competitors, delegate probations.
+- **Leader Panel** — Leader-specific forms, group member management.
+- **WAPC Panel** — Banned competitors management.
+- **WQAC Panel** — Helpful queries for quality assurance.
+
+<Tip>
+  Panel access is computed dynamically. If your role changes (e.g. you become a Senior Delegate), your panel access updates immediately — no logout/login is required.
+</Tip>

@@ -1,0 +1,136 @@
+---
+title: "Rankings"
+description: "How WCA world, continental, and national rankings work across all official events, how they are calculated, and how to read them."
+---
+
+WCA rankings are the official global leaderboards for competitive speedcubing. Every result submitted at a sanctioned WCA competition feeds into these rankings, giving every competitor a world rank, a continental rank, and a national rank for each event they have competed in.
+
+Rankings are maintained separately for **single** (best single solve) and **average** (mean of three or average of five, depending on the event format). You can browse the current rankings at [worldcubeassociation.org/results/rankings](/results/rankings).
+
+## Two ranking types
+
+**Single** rankings are based on a competitor's personal best single solve across all competitions. The value stored in the database is the raw centisecond time (or the encoded Multi-Blind score for 333mbf).
+
+**Average** rankings are based on a competitor's best official average. For most events this is an average of five solves with the best and worst attempts trimmed. For events like 333mbf and fewest moves (which measure different quantities), only a mean of three is possible.
+
+<Note>
+When two competitors share the exact same best result, they receive the same numerical rank. The competitor listed immediately after them receives the rank that accounts for the tie — so if two competitors are both ranked 5th, the next competitor is ranked 7th, not 6th. This is standard competition ranking (1224 ranking).
+</Note>
+
+## Ranked events
+
+All 17 current WCA events appear in the rankings:
+
+<CardGroup cols={3}>
+  <Card title="3×3×3 Cube" icon="cube" href="/results/rankings">
+    `333` — The flagship event. Ranked by single and average of five.
+  </Card>
+  <Card title="2×2×2 Cube" icon="cube" href="/results/rankings">
+    `222` — Single and average of five.
+  </Card>
+  <Card title="4×4×4 Cube" icon="cube" href="/results/rankings">
+    `444` — Single and average of five.
+  </Card>
+  <Card title="5×5×5 Cube" icon="cube" href="/results/rankings">
+    `555` — Single and average of five.
+  </Card>
+  <Card title="6×6×6 Cube" icon="cube" href="/results/rankings">
+    `666` — Single and mean of three.
+  </Card>
+  <Card title="7×7×7 Cube" icon="cube" href="/results/rankings">
+    `777` — Single and mean of three.
+  </Card>
+  <Card title="3×3×3 Blindfolded" icon="eye-slash" href="/results/rankings">
+    `333bf` — Single and mean of three.
+  </Card>
+  <Card title="3×3×3 One-Handed" icon="hand" href="/results/rankings">
+    `333oh` — Single and average of five.
+  </Card>
+  <Card title="Clock" icon="clock" href="/results/rankings">
+    `clock` — Single and average of five.
+  </Card>
+  <Card title="Megaminx" icon="star" href="/results/rankings">
+    `minx` — Single and average of five.
+  </Card>
+  <Card title="Pyraminx" icon="triangle" href="/results/rankings">
+    `pyram` — Single and average of five.
+  </Card>
+  <Card title="Skewb" icon="gem" href="/results/rankings">
+    `skewb` — Single and average of five.
+  </Card>
+  <Card title="Square-1" icon="shapes" href="/results/rankings">
+    `sq1` — Single and average of five.
+  </Card>
+  <Card title="4×4×4 Blindfolded" icon="eye-slash" href="/results/rankings">
+    `444bf` — Single only.
+  </Card>
+  <Card title="5×5×5 Blindfolded" icon="eye-slash" href="/results/rankings">
+    `555bf` — Single only.
+  </Card>
+  <Card title="3×3×3 Multi-Blind" icon="cubes" href="/results/rankings">
+    `333mbf` — Single only. Ranked by encoded score (points and time).
+  </Card>
+  <Card title="3×3×3 Fewest Moves" icon="calculator" href="/results/rankings">
+    `333fm` — Single and mean of three. Measured in moves, not time.
+  </Card>
+</CardGroup>
+
+## How rankings are calculated
+
+After each competition's results are posted and validated, a background job (`ComputeAuxiliaryData`) recomputes the `ranks_single` and `ranks_average` tables. These tables store one row per person per event, holding the person's best result and their world, continental, and national ranks derived from it.
+
+The process works as follows:
+
+<Steps>
+  <Step title="Competition results are submitted">
+    The delegate uploads results via the WCA website. After staff review, results are marked as posted.
+  </Step>
+  <Step title="Auxiliary data is recomputed">
+    The `ComputeAuxiliaryData` job rebuilds the concise results views and recalculates every competitor's best result per event across all competitions they have ever attended.
+  </Step>
+  <Step title="Ranks tables are rebuilt">
+    The `ranks_single` and `ranks_average` tables are repopulated. Each row contains `world_rank`, `continent_rank`, and `country_rank` for the competitor in that event.
+  </Step>
+  <Step title="Rankings page reflects the update">
+    The rankings page caches results against the `ComputeAuxiliaryData` successful start date. Once the job completes, the cache key changes and fresh data is served.
+  </Step>
+</Steps>
+
+The rankings page query uses the `concise_single_results` and `concise_average_results` database views, which contain each person's best result per event as a single row. This makes the "top N persons" query efficient without scanning every result row.
+
+## Filtering rankings
+
+The rankings page at `/results/rankings` supports several filters:
+
+| Filter | Description |
+|---|---|
+| **Event** | Show rankings for one specific event or all events at once |
+| **Region** | Scope to world (default), a specific continent, or a specific country |
+| **Type** | Switch between single and average |
+| **Show** | Choose between top 100 persons (default) or individual results |
+| **Gender** | Filter to male or female competitors only |
+
+When you scope to a continent or country, the `region_condition` SQL clause restricts results to competitors whose `country_id` belongs to that region. Continental records use the continent's `record_name` field (for example `_Europe` stores `ER`).
+
+## Personal records vs. rankings
+
+A competitor's **personal record (PR)** is simply their best result in an event — the value stored as `best` in `ranks_single` or `ranks_average`. The rank is the position of that personal record among all competitors globally, continentally, or nationally.
+
+Your personal records appear on your competitor profile page at `/persons/<WCA_ID>`. The rankings page shows your rank relative to the filtered scope.
+
+## Regional record notation
+
+When a result sets a regional record at the time it is achieved, the `regional_single_record` or `regional_average_record` column on the `Results` table is populated with a short code:
+
+| Code | Meaning |
+|---|---|
+| `WR` | World Record |
+| `ER` | European Record |
+| `NAR` | North American Record |
+| `AsR` | Asian Record |
+| `AfR` | African Record |
+| `SAR` | South American Record |
+| `OcR` | Oceanian Record |
+| `NR` | National Record |
+
+These codes are set at the time results are first posted and reflect the record status as of that moment. A result displaying `NR` in the results table was the national record when it was achieved, even if a faster result was later set.

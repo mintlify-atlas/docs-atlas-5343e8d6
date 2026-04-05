@@ -1,0 +1,100 @@
+---
+title: "Live Results"
+description: "Follow competition results in real time — from the first solve attempt to the final podium."
+---
+
+Live Results is a real-time result entry and display system built into the WCA platform. During a competition, scoretakers enter solve times directly into the platform as competitors finish their attempts. Those results are immediately visible to anyone watching online — no page refresh required.
+
+<Note>
+  Live Results must be enabled per competition. Organizers and delegates configure which rounds participate in live scoring through the competition's schedule admin panel before the event begins.
+</Note>
+
+## What competitors and spectators see
+
+The live interface has three main public views, all accessible without logging in.
+
+### Competitor view
+
+Navigate to `/competitions/:competition_id/live/competitors/:registration_id` to follow a single competitor's results across all rounds they have entered. The page shows each attempt value as it is entered, along with a running best and average, and whether the competitor is currently advancing to the next round.
+
+A **forecast** is shown when the competitor has one solve remaining in a mean or average format: the page displays the best possible and worst possible average they can achieve based on their existing attempts.
+
+### Podiums view
+
+The podiums view (`/competitions/:competition_id/live/podiums`) shows live standings for all final rounds simultaneously. Each event's final round is displayed with the top competitors ranked by best or average, depending on the event's format.
+
+### Round results
+
+The round results view (`/competitions/:competition_id/live/rounds/:round_id`) shows every competitor in a specific round, ranked in real time. Columns show individual attempt values, best, average, and whether a result has been locked by a delegate.
+
+Results are fetched from the API endpoint:
+
+```
+GET /api/v1/competitions/:competition_id/live/rounds/:round_id
+```
+
+The response is a JSON array of result objects with this shape:
+
+```json
+{
+  "registration_id": 42,
+  "global_pos": 1,
+  "local_pos": 1,
+  "best": 754,
+  "average": 891,
+  "single_record_tag": "NR",
+  "average_record_tag": null,
+  "advancing": true,
+  "advancing_questionable": false,
+  "last_attempt_entered_at": "2024-03-15T10:32:00Z",
+  "live_attempts": [
+    { "attempt_number": 1, "value": 901 },
+    { "attempt_number": 2, "value": 754 },
+    { "attempt_number": 3, "value": 1018 }
+  ]
+}
+```
+
+Times are stored in centiseconds. Special values follow WCA conventions: `-1` for DNF, `-2` for DNS.
+
+## Admin interface
+
+Delegates and scoretakers access the admin panel to enter results during the competition. Each round must be opened before results can be entered, and closed before the next round can be used.
+
+<Steps>
+  <Step title="Open the schedule admin">
+    Go to `/competitions/:competition_id/live/admin`. This page lists every round in the competition schedule. Select the round you are about to run.
+  </Step>
+  <Step title="Open the round">
+    Click **Open round** on the schedule admin page. This creates `LiveResult` records for every competitor with an accepted registration in that round, initializing `best` and `average` to `0`.
+  </Step>
+  <Step title="Enter solve attempts">
+    On the round admin page (`/competitions/:competition_id/live/:round_id/admin`), find the competitor by name or WCA ID. Enter each solve value one at a time. The system automatically computes best and average using WCA rules (including DNF handling) after every entry.
+  </Step>
+  <Step title="Mark a competitor as quit">
+    If a competitor does not show up or withdraws mid-round, use the **Quit** action. This sets `advancing: false` on their result and records which user marked them as quit, preserving the audit trail.
+  </Step>
+  <Step title="Double-check results">
+    Use the **Double-check** view (`/competitions/:competition_id/live/:round_id/double_check`) to compare entered results against the physical scorecards before locking.
+  </Step>
+  <Step title="Lock results">
+    Locking a result (`locked_by_id` is set to the current user's ID) freezes the ranking computation for that competitor. Once locked, advancing status is no longer automatically recomputed when other results change. Delegates lock results when they are satisfied that a result is correct.
+  </Step>
+  <Step title="Close and submit">
+    When all results are locked and verified, close the round. Results entered through the live system are later reconciled with the official WCA results submission to become the competition's permanent record.
+  </Step>
+</Steps>
+
+## Record detection
+
+The system tracks single and average records as results are entered. Record tags (`single_record_tag`, `average_record_tag`) are set per result and surfaced in both the public views and the admin interface. Because records are recalculated incrementally, they reflect the current state of entries and update automatically as new times are entered.
+
+## Advancing competitors
+
+After every result update, the platform recomputes which competitors are advancing to the next round. The `advancing` boolean on each `LiveResult` is updated automatically using the round's cutoff and advancement condition. When a delegate locks a result, its advancing status is frozen and excluded from further recomputation.
+
+The `advancing_questionable` flag is set when a competitor is on the boundary of the cutoff — their advancement may change as other results come in.
+
+## How live results connect to final results
+
+Live results are a separate model (`LiveResult` / `LiveAttempt`) from the official `Result` model used in the WCA database. Once a competition ends, delegates submit results through the standard results submission workflow. The live results serve as a real-time reference during the competition and a cross-check tool during results submission, but the official record comes from the submitted scorecard data.

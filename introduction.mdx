@@ -1,0 +1,68 @@
+---
+title: "World Cube Association"
+description: "The official platform for managing speedcubing competitions, global rankings, competitor profiles, and community governance worldwide."
+---
+
+Welcome to the World Cube Association (WCA) platform documentation. The WCA organizes and regulates speedcubing competitions worldwide, maintaining official rankings and records for all WCA puzzle events.
+
+This documentation covers how to participate in competitions, use the WCA website, integrate with the WCA API, and contribute to the platform.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/contributing/quickstart">
+    Set up the WCA platform locally and start contributing
+  </Card>
+  <Card title="Competitions" icon="trophy" href="/competitions/overview">
+    Learn how competitions work, from organizing to results
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Integrate with the WCA API to access competitions, results, and more
+  </Card>
+  <Card title="Rankings & Records" icon="chart-line" href="/results/rankings">
+    Explore global rankings and world records across all WCA events
+  </Card>
+</CardGroup>
+
+## What is the WCA platform?
+
+The World Cube Association website is a full-stack Ruby on Rails application with a Next.js frontend that powers all official WCA operations:
+
+- **Competition management** — Organizers and delegates manage the full lifecycle of competitions, from submission through announcement to results posting
+- **Competitor registration** — Athletes register for competitions with integrated Stripe and PayPal payment support
+- **Official results and rankings** — All competition results feed into global, continental, and national rankings updated after every event
+- **Public API** — A REST API (v0 and v1) lets developers build tools, apps, and integrations on top of WCA data
+- **Live results** — Real-time result entry and display during active competitions
+- **Data exports** — Full public database exports in SQL and TSV format, updated regularly
+
+## Getting started
+
+<Steps>
+  <Step title="Create a WCA account">
+    Sign up at [worldcubeassociation.org](https://www.worldcubeassociation.org/users/sign_up) to access competitions, track your results, and claim your WCA ID.
+  </Step>
+  <Step title="Find a competition">
+    Browse upcoming competitions on the [competitions page](https://www.worldcubeassociation.org/competitions). Filter by location, date, and events.
+  </Step>
+  <Step title="Register and compete">
+    Register for a competition, receive confirmation, and compete. Your results are posted to the official database after the event.
+  </Step>
+  <Step title="Explore the API">
+    Use the [WCA API](/api/overview) to access competition data, results, rankings, and more in your own applications.
+  </Step>
+</Steps>
+
+## Key resources
+
+<CardGroup cols={2}>
+  <Card title="Platform Architecture" icon="sitemap" href="/contributing/architecture">
+    Understand the technical stack and how the platform is organized
+  </Card>
+  <Card title="User Accounts" icon="user" href="/users/accounts">
+    Manage your profile, WCA ID, avatar, and security settings
+  </Card>
+  <Card title="Live Results" icon="bolt" href="/platform/live-results">
+    Follow competitions in real time with the live results system
+  </Card>
+  <Card title="Data Export" icon="database" href="/results/data-export">
+    Download the full WCA results database for offline analysis
+  </Card>
+</CardGroup>

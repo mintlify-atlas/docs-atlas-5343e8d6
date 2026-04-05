@@ -1,0 +1,163 @@
+---
+title: "Records API"
+description: "Retrieve current world, continental, and national records for all WCA events in a single request."
+---
+
+The records endpoint returns the current best results at every scope level — world, continental, and national — for every WCA event. It is backed by the `concise_single_results` and `concise_average_results` database views, which are pre-computed aggregates of every result ever submitted. The response is cached keyed to the date of the last `ComputeAuxiliaryData` run.
+
+The API enforces a **60 requests per minute** rate limit per IP address for external clients.
+
+<Tip>
+  This endpoint returns all records in a single response, making it efficient to use as a lookup table. Cache the response on your end since records change infrequently.
+</Tip>
+
+---
+
+## Get current records
+
+```
+GET /api/v0/records
+```
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/records
+```
+
+This endpoint accepts no parameters. It always returns all events and all scope levels.
+
+### Response
+
+```json
+{
+  "world_records": {
+    "333": {
+      "single": 337,
+      "average": 418
+    },
+    "222": {
+      "single": 49,
+      "average": 83
+    },
+    "pyram": {
+      "single": 91,
+      "average": 153
+    }
+  },
+  "continental_records": {
+    "Asia": {
+      "333": {
+        "single": 337,
+        "average": 418
+      },
+      "222": {
+        "single": 49,
+        "average": 83
+      }
+    },
+    "Europe": {
+      "333": {
+        "single": 390,
+        "average": 489
+      }
+    },
+    "North America": {
+      "333": {
+        "single": 410,
+        "average": 512
+      }
+    }
+  },
+  "national_records": {
+    "China": {
+      "333": {
+        "single": 337,
+        "average": 418
+      }
+    },
+    "United States": {
+      "333": {
+        "single": 410,
+        "average": 512
+      }
+    }
+  }
+}
+```
+
+<ResponseField name="world_records" type="object" required>
+  World records for all events. Keyed by WCA event ID.
+
+  <Expandable title="structure">
+    Each key is a WCA event ID (e.g. `333`, `pyram`, `skewb`). Each value is an object with up to two keys:
+
+    <ResponseField name="single" type="integer">
+      Best single result ever achieved globally, in centiseconds (or event-specific units for FMC and MBLD). Only present if at least one valid single result exists.
+    </ResponseField>
+    <ResponseField name="average" type="integer">
+      Best average/mean result ever achieved globally. Only present for events where averages are recorded.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="continental_records" type="object" required>
+  Continental records, nested by continent ID then event ID.
+
+  <Expandable title="structure">
+    Top-level keys are WCA continent IDs:
+
+    | Key | Continent |
+    |-----|-----------|
+    | `Asia` | Asia |
+    | `Europe` | Europe |
+    | `North America` | North America |
+    | `South America` | South America |
+    | `Africa` | Africa |
+    | `Oceania` | Oceania |
+
+    Each continent maps to an object with the same event ID → `{ single, average }` structure as `world_records`. A continent key is only present if at least one result exists for competitors from that continent.
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="national_records" type="object" required>
+  National records, nested by country ID (the internal WCA country name string, e.g. `China`, `United States`) then event ID.
+
+  <Expandable title="structure">
+    Each country maps to an object with the same event ID → `{ single, average }` structure. Only countries with at least one result in the database appear as keys. The country key is the full country name as stored in the WCA results database, not the ISO 3166-1 alpha-2 code.
+  </Expandable>
+</ResponseField>
+
+---
+
+## Record codes
+
+When results reference records (e.g. in the `/rankings` or `/persons/:wca_id/results` endpoints), the following record code strings are used:
+
+| Code | Scope |
+|------|-------|
+| `WR` | World Record |
+| `AsR` | Asian Record |
+| `AfR` | African Record |
+| `ER` | European Record |
+| `NAR` | North American Record |
+| `OcR` | Oceanian Record |
+| `SAR` | South American Record |
+| `NR` | National Record |
+
+The `/api/v0/records` endpoint does not include these codes directly — it returns only the numeric best values. To identify which competition or person holds a record, use the [Rankings API](/api/results/rankings) or search the [Persons API](/api/users/persons).
+
+---
+
+## Result encoding
+
+Values follow the same encoding as all other result endpoints:
+
+- **Timed events:** Centiseconds (e.g. `710` = 7.10 seconds).
+- **FMC (333fm):** Single is the move count; average is mean of three move counts × 100 (e.g. `2467` = 24.67 moves mean).
+- **MBLD (333mbf):** Packed integer encoding — use the WCA MBLD decode formula to extract solved/attempted/time.
+- **DNF / DNS:** These results are excluded from the records table entirely (records only track successful results).
+
+---
+
+## Caching
+
+The response is cached on the server keyed to the date of the most recent `ComputeAuxiliaryData` run. Records are recomputed whenever new competition results are posted and the auxiliary data job runs. On the client side, you can safely cache this response for several hours — world records are rare events and continental/national records change at most a handful of times per day globally.

@@ -1,0 +1,131 @@
+---
+title: "User Accounts"
+description: "How WCA accounts work: registration, profile fields, WCA ID claiming, two-factor authentication, and account management."
+---
+
+A WCA account is your identity on the World Cube Association platform. It lets you register for competitions, track your results, and — once linked to a WCA ID — appear on the global rankings. This page walks through how accounts are created, what information they hold, and how to keep them secure.
+
+## Creating an Account
+
+<Steps>
+  <Step title="Navigate to Sign Up">
+    Go to the WCA website and click **Sign Up**. The registration path is `/users/sign_up`. You must provide a full name, a valid email address, and a password.
+
+    Your name does not need to match a WCA ID at sign-up time, but if you are a returning competitor and intend to claim a WCA ID right away, you can leave the name field empty — the platform will copy your name from the competition database once you complete the claim.
+  </Step>
+
+  <Step title="Verify Your Email">
+    After submitting the form, the platform sends a confirmation email via `NewRegistrationMailer`. You must click the link in that email before your account is activated. Unconfirmed accounts cannot sign in or register for competitions.
+
+    If you claimed a WCA ID during sign-up, the system will also automatically notify the Delegate you selected once your email address is confirmed.
+  </Step>
+
+  <Step title="Complete Your Profile">
+    After confirming your email, log in and visit **Profile → Edit** (`/profile/edit`). Fill in your:
+    - **Date of birth** — must be a past date and at least two years ago.
+    - **Gender** — `Male`, `Female`, or `Other` (stored as `m`, `f`, `o`).
+    - **Country** — stored as an ISO 3166-1 alpha-2 code.
+
+    These fields are required before you can register for a competition.
+  </Step>
+
+  <Step title="Upload an Avatar (Optional)">
+    You can upload a profile photo once your account has a WCA ID linked to it. The WCA ID requirement exists to prevent anonymous misuse of avatar uploads. Photos go through a moderation queue managed by the WCA Results Team (WRT) before they become publicly visible.
+  </Step>
+</Steps>
+
+## Profile Fields
+
+Every user account stores the following core fields:
+
+| Field | Notes |
+|---|---|
+| `name` | Must match the name on the linked WCA person record once a WCA ID is assigned. |
+| `email` | Used for login and all notifications. Changing it requires re-confirmation. |
+| `wca_id` | The ten-character identifier (e.g. `2009SMIT01`) that links you to the results database. |
+| `country_iso2` | Two-letter ISO country code. Must match the person record once a WCA ID is linked. |
+| `dob` | Date of birth. Validated to be in the past and at least two years ago. |
+| `gender` | `m`, `f`, or `o`. Must match the person record once a WCA ID is linked. |
+| `avatar` | Current profile photo. Separate `pending_avatar` field holds an upload awaiting approval. |
+
+<Note>
+  Once a WCA ID is assigned to your account, your name, country, gender, and date of birth are locked to match the person record in the results database. To change any of these, contact the WCA Results Team.
+</Note>
+
+## Claiming a WCA ID
+
+<Accordion title="What is a WCA ID?">
+  A WCA ID is a unique ten-character code assigned to every person who has competed at an official WCA competition. Its format is `YYYYXXXXnn`, where `YYYY` is the year of the competitor's first competition, `XXXX` is the first four letters of their last name (uppercased, ASCII A–Z only), and `nn` is a two-digit disambiguating number — for example, `2015PARK01`.
+
+  The WCA ID connects your website account to the results and rankings database. Without a linked WCA ID, you appear as a newcomer in the system.
+</Accordion>
+
+<Accordion title="How do I claim my WCA ID?">
+  Navigate to **Profile → Claim WCA ID** (`/profile/claim_wca_id`). You will need:
+
+  1. Your WCA ID — find it on your previous competition result pages.
+  2. Your date of birth, exactly as it was recorded when you first competed. This is used as a verification step. After five incorrect attempts the claim is locked and you must contact the WCA Results Team.
+  3. A Delegate to confirm the claim. The platform shows nearby Delegates based on your unconfirmed WCA ID; select one.
+
+  After submitting, the platform sends a notification email to your chosen Delegate. The claim remains pending (`unconfirmed_wca_id`) until the Delegate confirms it.
+</Accordion>
+
+<Accordion title="What happens after a Delegate confirms my claim?">
+  When a Delegate confirms the claim (via **Users → Confirm WCA ID** in the admin interface), the platform:
+
+  1. Links your account to the person record by setting `wca_id`.
+  2. Copies your name, date of birth, gender, and country from the person record to your account.
+  3. If a dummy account existed for your WCA ID (created to preserve historical avatar data), its avatar and avatar history are transferred to your account and the dummy account is deleted.
+  4. Clears the `unconfirmed_wca_id` and `delegate_id_to_handle_wca_id_claim` fields.
+</Accordion>
+
+<Accordion title="What if my date of birth is missing or wrong in the database?">
+  If the WCA database does not have a date of birth on file for your WCA ID, or if you have exhausted your five verification attempts, you will see a link to the date-of-birth correction form (`/contact/dob`). Submit that form to ask the WCA Results Team to update the record. Once the record is corrected, you can retry the claim.
+</Accordion>
+
+## Two-Factor Authentication
+
+Two-factor authentication (2FA) adds a second layer of security to your login by requiring a time-based one-time password (TOTP) from an authenticator app in addition to your password.
+
+### Enabling 2FA
+
+1. Go to **Profile → Edit** and select the **2FA** tab.
+2. Because enabling 2FA is a sensitive action, the platform will ask you to re-authenticate (enter your password or current OTP) if more than 10 minutes have passed since your last login.
+3. Scan the QR code shown with an authenticator app (e.g. Google Authenticator, Authy, 1Password).
+4. The platform stores the encrypted OTP secret using the application's `OTP_ENCRYPTION_KEY`.
+
+### Backup Codes
+
+After enabling 2FA, generate backup codes immediately. The platform creates **10 codes**, each **8 characters long** (alphanumeric). Store them somewhere safe and offline — each code can only be used once.
+
+To regenerate backup codes, visit the 2FA section of your profile and click **Regenerate Backup Codes**. This invalidates all previously generated codes. Regenerating requires a recent authentication (within the last 10 minutes).
+
+### Disabling 2FA
+
+You can disable 2FA from the same profile section. Disabling also requires a recent authentication. Note that certain privileged roles — such as WST Admin — may in the future be required to keep 2FA enabled.
+
+## Password Management
+
+Changing your password or email address is treated as a sensitive operation. The platform requires you to re-authenticate within the last 10 minutes before allowing these changes. If you have 2FA enabled, you must provide a valid OTP or backup code; otherwise, your current password is required.
+
+To reset a forgotten password, use the **Forgot Password** link on the sign-in page (`/users/sign_in`). A reset link is emailed to the address on file.
+
+## Cookie Consent
+
+The WCA website asks for cookie consent on first visit. If you are signed in, the platform records your acknowledgment by setting `cookies_acknowledged: true` on your account via a `POST /profile/acknowledge-cookies` request. This preference is stored server-side and does not require a cookie banner to be shown again on subsequent visits.
+
+## Merging Accounts
+
+Account merging is an administrative operation performed by the WCA Results Team via the **WRT Panel → Merge Users** page. It is used when a person has inadvertently created two accounts.
+
+**Conditions for a merge:**
+
+- The two accounts must have the same name, country, gender, and date of birth.
+- Only one account may have a WCA ID. If both accounts have a WCA ID, the merge is blocked.
+- If either account is a "special account" (used for system operations), only WRT members can perform the merge.
+
+When a merge is executed (`POST /users/merge`), all data from the source account — registrations, votes, bookmarks, OAuth tokens, roles, and avatar history — is transferred to the destination account. The source account is then deleted.
+
+<Warning>
+  Account merges are irreversible. If you believe you have a duplicate account, contact the WCA Results Team rather than attempting any workaround yourself.
+</Warning>

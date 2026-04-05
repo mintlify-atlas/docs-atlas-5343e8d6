@@ -1,0 +1,352 @@
+---
+title: "Authenticated User"
+description: "Retrieve the currently authenticated user's profile, personal records, preferred events, permissions, and bookmarks."
+---
+
+The authenticated user endpoints require a valid OAuth 2.0 access token. They expose data for the user who owns the token and cannot be accessed with session cookies alone. Use these endpoints to build integrations that act on behalf of a specific WCA member.
+
+<Note>
+  All endpoints under `/api/v0/users/me` require an OAuth bearer token in the `Authorization` header. Unauthenticated requests return `401 Unauthorized`.
+</Note>
+
+The API enforces a **60 requests per minute** rate limit per IP address for external clients. Internal WCA services on private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`) are exempt from this limit.
+
+---
+
+## Get current user
+
+Returns the full profile of the currently authenticated user, including their rankings across all events.
+
+<Tabs>
+  <Tab title="GET /api/v0/me">
+    The canonical OAuth-protected endpoint. Requires the `public` scope at minimum. Also available at `GET /api/v0/users/me`.
+
+    ```bash
+    curl https://www.worldcubeassociation.org/api/v0/me \
+      -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+    ```
+  </Tab>
+  <Tab title="GET /api/v0/users/me">
+    Alias for `/api/v0/me`. Behaves identically.
+
+    ```bash
+    curl https://www.worldcubeassociation.org/api/v0/users/me \
+      -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+    ```
+  </Tab>
+</Tabs>
+
+### Response
+
+```json
+{
+  "user": {
+    "id": 267,
+    "wca_id": "2005REYN01",
+    "name": "Tim Reynolds",
+    "email": "tim@example.com",
+    "gender": "m",
+    "country_iso2": "US",
+    "delegate_status": "delegate",
+    "url": "https://www.worldcubeassociation.org/persons/2005REYN01",
+    "avatar": {
+      "url": "https://avatars.worldcubeassociation.org/...",
+      "thumb_url": "https://avatars.worldcubeassociation.org/...",
+      "is_default": false
+    },
+    "teams": [],
+    "class": "user"
+  },
+  "rankings": {
+    "single": [
+      {
+        "id": 1,
+        "person_id": "2005REYN01",
+        "event_id": "333",
+        "best": 712,
+        "world_rank": 4201,
+        "continent_rank": 892,
+        "country_rank": 311
+      }
+    ],
+    "average": [
+      {
+        "id": 1,
+        "person_id": "2005REYN01",
+        "event_id": "333",
+        "best": 874,
+        "world_rank": 5130,
+        "continent_rank": 1042,
+        "country_rank": 380
+      }
+    ]
+  }
+}
+```
+
+<ResponseField name="user" type="object" required>
+  The authenticated user's profile object.
+
+  <Expandable title="user fields">
+    <ResponseField name="id" type="integer" required>
+      Internal numeric database ID for the WCA account.
+    </ResponseField>
+    <ResponseField name="wca_id" type="string">
+      The competitor's WCA ID (e.g. `2005REYN01`). Absent if the user has never competed.
+    </ResponseField>
+    <ResponseField name="name" type="string" required>
+      Full name as registered with the WCA.
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      Email address. Only included when an OAuth token with sufficient scope is used.
+    </ResponseField>
+    <ResponseField name="gender" type="string" required>
+      One of `m` (male), `f` (female), or `o` (other/undisclosed).
+    </ResponseField>
+    <ResponseField name="country_iso2" type="string" required>
+      ISO 3166-1 alpha-2 country code (e.g. `US`, `CN`, `DE`).
+    </ResponseField>
+    <ResponseField name="delegate_status" type="string">
+      One of `senior_delegate`, `regional_delegate`, `delegate`, `junior_delegate`, or `trainee_delegate`. Absent if the user is not a delegate. This reflects the highest delegate role held by the user.
+    </ResponseField>
+    <ResponseField name="url" type="string">
+      Canonical URL of the person's public WCA profile page.
+    </ResponseField>
+    <ResponseField name="avatar" type="object">
+      <Expandable title="avatar fields">
+        <ResponseField name="url" type="string">Full-size avatar image URL.</ResponseField>
+        <ResponseField name="thumb_url" type="string">Thumbnail avatar image URL.</ResponseField>
+        <ResponseField name="is_default" type="boolean">Whether this is the WCA default avatar (no custom upload).</ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="teams" type="array">
+      List of WCA team/committee memberships (e.g. WRT, WDC). Each entry has `friendly_id`, `team_name`, and `team_leader`.
+    </ResponseField>
+    <ResponseField name="class" type="string" required>
+      Always `"user"` for this endpoint.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="rankings" type="object">
+  Present only on the `/me` endpoints. Contains all current world ranking entries for the user.
+
+  <Expandable title="rankings fields">
+    <ResponseField name="single" type="array">
+      Array of single-solve ranking entries, one per event.
+    </ResponseField>
+    <ResponseField name="average" type="array">
+      Array of average ranking entries, one per event.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Get user by ID
+
+Retrieve a public user profile by their numeric account ID. Does not require authentication.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/users/267
+```
+
+<ParamField path="id" type="integer" required>
+  Numeric WCA account ID.
+</ParamField>
+
+Returns `{ "user": null }` with status `404` if no user with that ID exists.
+
+### Optional query parameters
+
+<ParamField query="upcoming_competitions" type="boolean">
+  When `true`, the response includes an `upcoming_competitions` array of competitions the user has an accepted registration in that have not yet started.
+</ParamField>
+
+<ParamField query="ongoing_competitions" type="boolean">
+  When `true`, the response includes an `ongoing_competitions` array of competitions currently in progress.
+</ParamField>
+
+---
+
+## Get user by WCA ID
+
+Retrieve a public user profile by WCA ID. Does not require authentication.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/users/2005REYN01
+```
+
+<ParamField path="wca_id" type="string" required>
+  A valid WCA competitor ID in the format `YYYYNAMEnn` (e.g. `2005REYN01`). Must match the regex `[1-9][0-9]{3}[A-Z]{4}[0-9]{2}`.
+</ParamField>
+
+Returns `{ "user": null }` with status `404` if no user with that WCA ID exists. Note that a Person (results record) may exist for a WCA ID even if no account is linked to it — use the [Persons API](/api/users/persons) in that case.
+
+---
+
+## Personal records
+
+Returns the authenticated user's personal bests in WCIF format. Requires authentication.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/users/me/personal_records \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### Response
+
+```json
+{
+  "single": [
+    {
+      "eventId": "333",
+      "best": 712,
+      "worldRanking": 4201,
+      "continentRanking": 892,
+      "countryRanking": 311,
+      "type": "single"
+    }
+  ],
+  "average": [
+    {
+      "eventId": "333",
+      "best": 874,
+      "worldRanking": 5130,
+      "continentRanking": 1042,
+      "countryRanking": 380,
+      "type": "average"
+    }
+  ]
+}
+```
+
+<ResponseField name="single" type="array" required>
+  Array of WCIF-format personal best objects for single results. Empty if the user has no WCA ID.
+</ResponseField>
+
+<ResponseField name="average" type="array" required>
+  Array of WCIF-format personal best objects for average results. Empty if the user has no WCA ID.
+</ResponseField>
+
+Each entry in both arrays has the following fields:
+
+<ResponseField name="eventId" type="string">
+  WCA event ID (e.g. `333`, `pyram`, `skewb`).
+</ResponseField>
+<ResponseField name="best" type="integer">
+  Best result in centiseconds. For FMC this is the number of moves; for MBLD it uses a special encoding.
+</ResponseField>
+<ResponseField name="worldRanking" type="integer">
+  Current world ranking for this event and type.
+</ResponseField>
+<ResponseField name="continentRanking" type="integer">
+  Current continental ranking.
+</ResponseField>
+<ResponseField name="countryRanking" type="integer">
+  Current national ranking.
+</ResponseField>
+<ResponseField name="type" type="string">
+  Either `single` or `average`.
+</ResponseField>
+
+---
+
+## Preferred events
+
+Returns an array of event IDs the authenticated user has marked as their preferred events. Requires authentication. Results are cached for 24 hours.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/users/me/preferred_events \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### Response
+
+```json
+["333", "pyram", "skewb", "sq1"]
+```
+
+Returns a flat JSON array of event ID strings. An empty array means no preferred events have been set.
+
+---
+
+## Permissions
+
+Returns the full permissions object for the authenticated user. Requires authentication. Used by the frontend to determine which UI elements and admin panels to show.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/users/me/permissions \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### Response
+
+```json
+{
+  "can_attend_competitions": { "scope": "*" },
+  "can_organize_competitions": { "scope": "*" },
+  "can_administer_competitions": { "scope": [] },
+  "can_view_delegate_admin_page": { "scope": [] },
+  "can_view_delegate_report": { "scope": [] },
+  "can_edit_delegate_report": { "scope": [] },
+  "can_create_groups": { "scope": [] },
+  "can_read_groups_current": { "scope": ["teams_committees", "delegate_regions"] },
+  "can_read_groups_past": { "scope": [] },
+  "can_edit_groups": { "scope": [] },
+  "can_access_panels": { "scope": [] },
+  "can_request_to_edit_others_profile": { "scope": [] }
+}
+```
+
+<ResponseField name="can_attend_competitions" type="object" required>
+  Whether the user can register for competitions. `scope` is `"*"` for all competitions, or an array of specific competition IDs, or empty if banned.
+
+  <Expandable title="fields">
+    <ResponseField name="scope" type="string | array">Wildcard `"*"` or array of competition IDs.</ResponseField>
+    <ResponseField name="until" type="string | null">If present, an ISO 8601 datetime after which the restriction lifts (e.g. ban expiry).</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="can_organize_competitions" type="object" required>
+  Whether the user can create and manage competition listings.
+</ResponseField>
+
+<ResponseField name="can_administer_competitions" type="object" required>
+  Whether the user can access competition admin tooling. Delegates and board members typically have `"*"` scope; organizers may have specific competition IDs.
+</ResponseField>
+
+<ResponseField name="can_view_delegate_report" type="object" required>
+  Access to read delegate reports. Scope lists applicable competition IDs.
+</ResponseField>
+
+<ResponseField name="can_edit_delegate_report" type="object" required>
+  Access to write delegate reports.
+</ResponseField>
+
+<ResponseField name="can_access_panels" type="object" required>
+  Which admin panel sections the user can access (e.g. `wrt`, `wdc`, `board`).
+</ResponseField>
+
+<ResponseField name="can_request_to_edit_others_profile" type="object" required>
+  Whether the user can submit profile edit requests for other competitors. Delegates have `"*"` scope; regular users have an empty array.
+</ResponseField>
+
+---
+
+## Bookmarked competitions
+
+Returns an array of competition IDs the authenticated user has bookmarked. Requires authentication. Results are cached for 60 minutes.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/users/me/bookmarks \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+### Response
+
+```json
+["CubingUSANationals2024", "WorldRubiksCubeChampionship2025"]
+```
+
+Returns a flat array of competition ID strings. Use these IDs with the [Competitions API](/api/competitions/detail) to fetch full details.

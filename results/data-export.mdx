@@ -1,0 +1,256 @@
+---
+title: "Data Export"
+description: "Download the complete WCA results database as a SQL dump or TSV files, or use the API to get current export metadata."
+---
+
+The WCA makes its full results database available as a public download. The export contains every official competition result, competitor profile, ranking, scramble, and more. It is the canonical offline data source used by third-party tools, statistics sites, and researchers.
+
+You can access the export at [worldcubeassociation.org/export/results](https://www.worldcubeassociation.org/export/results).
+
+## What the export contains
+
+The public results export is a snapshot of the WCA production database sanitised to remove private user data. It includes the following tables:
+
+| Table | Description |
+|---|---|
+| `Results` / `results` | Every official result from every WCA competition. One row per competitor per round. |
+| `result_attempts` | Individual attempt values linked to each result row (v2 export only). |
+| `Persons` / `persons` | Competitor profiles: WCA ID, name, country, gender. |
+| `Competitions` / `competitions` | All publicly visible competitions with location, date, events held, delegates, and organizers. |
+| `RanksSingle` / `ranks_single` | Each competitor's best single result per event, with world, continental, and national rank. |
+| `RanksAverage` / `ranks_average` | Each competitor's best average result per event, with world, continental, and national rank. |
+| `Events` / `events` | The list of official WCA events with their IDs and display names. |
+| `Formats` / `formats` | Round format definitions (average of 5, mean of 3, best of 3, etc.). |
+| `RoundTypes` / `round_types` | Round type codes (first round, second round, final, etc.). |
+| `Countries` / `countries` | Country list with ISO 2-letter codes and continent membership. |
+| `Continents` / `continents` | The seven WCA continental regions with their record name codes. |
+| `Scrambles` / `scrambles` | Official scrambles for all rounds at all competitions. |
+| `championships` | Competition championship designations (World, Continental, National). |
+| `eligible_country_iso2s_for_championship` | Which countries are eligible for each championship type. |
+
+Private data — passwords, email addresses, dates of birth, payment records, registration comments — are either excluded or replaced with fake values before the export is generated.
+
+## Export versions
+
+The export is currently at **v2** (`export_format_version: v2.0.2`). Version 1 reached end-of-life on 2026-01-15 and is no longer available.
+
+The key differences between v1 and v2:
+
+| | v1 (deprecated) | v2 (current) |
+|---|---|---|
+| Table naming | PascalCase (`Results`, `Persons`) | snake_case (`results`, `persons`) |
+| Attempt values | Five separate columns (`value1`–`value5`) | Separate `result_attempts` table |
+| Column naming | camelCase (`personId`, `countryId`) | snake_case (`person_id`, `country_id`) |
+| Ranking columns | `worldRank`, `continentRank`, `countryRank` | `world_rank`, `continent_rank`, `country_rank` |
+
+Always use v2 for new integrations. To check which version an export file was generated with, read the `metadata.json` file inside the zip archive.
+
+## Download formats
+
+<Tabs>
+  <Tab title="SQL dump">
+    The SQL export is a standard `mysqldump` output file. It includes `CREATE TABLE` statements and `INSERT` rows for the full dataset. Load it into any MySQL or MariaDB instance.
+
+    ```bash
+    # Download the latest SQL export (the URL redirects to the current versioned file)
+    curl -L "https://www.worldcubeassociation.org/export/results/v2/sql" -o WCA_export.sql.zip
+
+    # Unzip
+    unzip WCA_export.sql.zip
+
+    # Create a local database and load the dump
+    mysql -u root -p -e "CREATE DATABASE wca_export CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+    mysql -u root -p wca_export < WCA_export.sql
+    ```
+
+    After loading, query the data normally:
+
+    ```sql
+    -- Top 10 3x3 single results of all time (v2 schema)
+    SELECT wca_id, best, world_rank
+    FROM ranks_single
+    WHERE event_id = '333'
+    ORDER BY world_rank
+    LIMIT 10;
+    ```
+
+    <Note>
+    The SQL dump uses `utf8mb4` encoding. Make sure your MySQL/MariaDB instance and the target database use `utf8mb4` to avoid encoding errors with international competitor names.
+    </Note>
+  </Tab>
+  <Tab title="TSV files">
+    The TSV export is a zip archive containing one tab-separated values file per table, named `WCA_export_<TableName>.tsv`. Each file has a header row with column names. TSV is convenient for loading into spreadsheet tools, pandas, SQLite, or any custom pipeline.
+
+    ```bash
+    # Download the latest TSV export
+    curl -L "https://www.worldcubeassociation.org/export/results/v2/tsv" -o WCA_export.tsv.zip
+
+    # Unzip — produces WCA_export_results.tsv, WCA_export_persons.tsv, etc.
+    unzip WCA_export.tsv.zip
+    ```
+
+    Load into pandas for analysis:
+
+    ```python
+    import pandas as pd
+
+    results = pd.read_csv("WCA_export_results.tsv", sep="\t", low_memory=False)
+    persons = pd.read_csv("WCA_export_persons.tsv", sep="\t")
+    ranks = pd.read_csv("WCA_export_ranks_single.tsv", sep="\t")
+
+    # Merge to get each person's best 3x3 single and their world rank
+    cube333 = ranks[ranks["event_id"] == "333"].merge(
+        persons[["wca_id", "name", "country_id"]],
+        on="wca_id"
+    ).sort_values("world_rank")
+
+    print(cube333.head(10))
+    ```
+
+    <Note>
+    Multi-Blind (`333mbf`) scrambles in the TSV export have newlines replaced with `|` characters to keep each scramble on a single line. The SQL dump preserves the original newlines.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Schema overview
+
+The v2 export (the current format) uses snake_case table and column names. The key tables are:
+
+```sql
+-- results: one row per competitor per round per competition
+CREATE TABLE `results` (
+  `competition_id`         varchar(32)  NOT NULL DEFAULT '',
+  `event_id`               varchar(6)   NOT NULL DEFAULT '',
+  `round_type_id`          varchar(1)   NOT NULL DEFAULT '',
+  `pos`                    smallint     NOT NULL DEFAULT 0,
+  `best`                   int          NOT NULL DEFAULT 0,  -- centiseconds, or encoded value
+  `average`                int          NOT NULL DEFAULT 0,  -- centiseconds, 0 if N/A
+  `person_name`            varchar(80),
+  `wca_id`                 varchar(10)  NOT NULL DEFAULT '',  -- WCA ID
+  `country_id`             varchar(50),
+  `format_id`              varchar(1)   NOT NULL DEFAULT '',
+  `regional_single_record` varchar(3),  -- 'WR', 'ER', 'NR', etc., or empty
+  `regional_average_record` varchar(3)
+);
+
+-- result_attempts: individual attempt values (v2 only — replaces value1–value5 columns)
+-- Linked to results via result_id
+
+-- ranks_single / ranks_average: best result and ranks per person per event
+CREATE TABLE `ranks_single` (
+  `wca_id`         varchar(10)  NOT NULL DEFAULT '',
+  `event_id`       varchar(6)   NOT NULL DEFAULT '',
+  `best`           int          NOT NULL DEFAULT 0,
+  `world_rank`     int          NOT NULL DEFAULT 0,
+  `continent_rank` int          NOT NULL DEFAULT 0,
+  `country_rank`   int          NOT NULL DEFAULT 0
+);
+
+-- persons: competitor profiles
+CREATE TABLE `persons` (
+  `wca_id`     varchar(10)  NOT NULL DEFAULT '',  -- e.g. 2003BRUC01
+  `subid`      tinyint      NOT NULL DEFAULT 1,   -- 1 = current record, >1 = historical
+  `name`       varchar(80),
+  `country_id` varchar(50)  NOT NULL DEFAULT '',
+  `gender`     varchar(1)   DEFAULT ''            -- 'm', 'f', or ''
+);
+
+-- competitions: publicly visible competitions
+CREATE TABLE `competitions` (
+  `id`            varchar(32)  NOT NULL DEFAULT '',
+  `name`          varchar(50)  NOT NULL DEFAULT '',
+  `city_name`     varchar(50)  NOT NULL DEFAULT '',
+  `country_id`    varchar(50)  NOT NULL DEFAULT '',
+  `start_date`    date,
+  `end_date`      date,
+  `cancelled`     int          NOT NULL DEFAULT 0,
+  `event_specs`   longtext,   -- space-separated event IDs
+  `venue`         varchar(240) NOT NULL DEFAULT '',
+  `latitude`      int,
+  `longitude`     int
+);
+```
+
+<Note>
+The v1 export (now deprecated and past end-of-life as of 2026-01-15) used PascalCase table names (`Results`, `RanksSingle`, `Persons`, `Competitions`) and camelCase column names (`personId`, `worldRank`, `countryId`). Always use v2 for new integrations.
+</Note>
+
+### Special values in `best` and `average`
+
+Time-based events store centiseconds (hundredths of a second). A result of `743` means 7.43 seconds. Special non-time values use negative integers:
+
+| Value | Meaning |
+|---|---|
+| `0` | No result / not attempted |
+| `-1` | DNF (Did Not Finish) |
+| `-2` | DNS (Did Not Start) |
+
+For **333mbf** (Multi-Blind), the `best` column stores an encoded integer: `99 - points` in the top byte, time in seconds in the lower bits. Decode it with:
+
+```python
+def decode_mbf(value):
+    if value <= 0:
+        return None
+    points = 99 - (value // 10_000_000)
+    time_seconds = value % 10_000_000 // 100
+    missed = value % 100
+    solved = points + missed
+    attempted = solved + missed
+    return {"solved": solved, "attempted": attempted, "time_seconds": time_seconds}
+```
+
+## The developer database dump
+
+For local development of WCA platform features, a separate **developer database dump** is available at `/export/developer`. This is a full copy of the developer sanitised database, including all tables (users, registrations, competitions, etc.), but with private data replaced:
+
+- Dates of birth replaced with `1954-12-04`
+- Email addresses replaced with `<user_id>@worldcubeassociation.org`
+- Passwords replaced with the default dev password `wca`
+- Payment records and live results excluded entirely
+
+The developer dump is regenerated periodically and uploaded to S3. It is intended for use with the local Docker development environment, not for public data analysis. Use the public results export for analytics.
+
+```bash
+# Download the developer dump (direct S3 link)
+curl -L "https://www.worldcubeassociation.org/export/developer/wca-developer-database-dump" \
+  -o wca-developer-database-dump.zip
+
+unzip wca-developer-database-dump.zip
+
+# Load with default dev password
+mysql -u wca -pwca wca_development < wca-developer-database-dump.sql
+```
+
+## Getting export metadata via the API
+
+The `GET /api/v0/export/public` endpoint returns the current export version, download URLs, file sizes, and a rendered README. Use this to build tools that automatically download the latest export.
+
+```bash
+curl https://www.worldcubeassociation.org/api/v0/export/public
+```
+
+```json
+{
+  "export_date": "2025-11-25T00:00:00Z",
+  "export_version": "v2.0.2",
+  "sql_url": "https://www.worldcubeassociation.org/export/results/v2/sql",
+  "sql_filesize_bytes": 312456789,
+  "tsv_url": "https://www.worldcubeassociation.org/export/results/v2/tsv",
+  "tsv_filesize_bytes": 189034521,
+  "developer_url": "https://assets.worldcubeassociation.org/export/developer/wca-developer-database-dump.zip",
+  "readme": "..."
+}
+```
+
+The `export_version` field corresponds to the `export_format_version` in the `metadata.json` file bundled inside the zip archive. Check this field when writing parsers to handle future schema changes.
+
+<Tip>
+Always fetch the export URL from `/api/v0/export/public` rather than hardcoding a path. The underlying S3 file name includes a datestamp and version component that changes with each export run.
+</Tip>
+
+## Export update frequency
+
+The public results export is regenerated by the `DumpPublicResultsDatabase` background job, which runs automatically after each competition's results are posted and the auxiliary data computation job completes. There is no fixed schedule — the export reflects the state of the database at the time the job last ran.
+
+The `export_date` field in the API response and the `metadata.json` file inside the archive both record the exact timestamp of the export. Compare this against the `ComputeAuxiliaryData` successful start date to verify the export is current.
